@@ -143,15 +143,14 @@ jobs:
           set -euo pipefail
           echo "Waiting for ${PACKAGE} ${VERSION} on pub.dev"
           for attempt in {1..40}; do
-            latest="$(
-              curl -fsSL "https://pub.dev/api/packages/${PACKAGE}" |
-                python3 -c 'import json, sys; print(json.load(sys.stdin)["latest"]["version"])'
-            )"
+            sleep 15
+            resp="$(curl -sS "https://pub.dev/api/packages/${PACKAGE}" || true)"
+            latest="$(echo "$resp" | python3 -c 'import json, sys; data = json.load(sys.stdin); print(data.get("latest", {}).get("version", ""))' 2>/dev/null || true)"
             if [[ "$latest" == "$VERSION" ]]; then
               echo "${PACKAGE} ${VERSION} is indexed"
               exit 0
             fi
-            sleep 15
+            echo "Attempt $attempt: ${PACKAGE} ${VERSION} not yet visible, waiting..."
           done
           echo "::error::${PACKAGE} was not indexed as ${VERSION} within the timeout."
           exit 1
