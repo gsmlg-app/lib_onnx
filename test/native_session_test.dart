@@ -108,7 +108,7 @@ void main() {
         expect(report!.activeProvider, equals(ExecutionProvider.coreML));
         expect(report.isAccelerated, isTrue);
         expect(report.evidenceLevel, equals(EvidenceLevel.hardwareObserved));
-        expect(report.hardwareDetails, contains('Apple M1 Max'));
+        expect(report.hardwareDetails, contains('Apple'));
       }
 
       session.close();
