@@ -1,0 +1,23 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Native artifacts
+native/build/
+*.dylib
+*.so
+*.dll
+*.o
+*.a
+
+# Local environments and cache
+.cache/
+.venv/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db

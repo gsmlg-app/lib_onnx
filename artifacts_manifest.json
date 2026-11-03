@@ -1,0 +1,45 @@
+{
+  "manifest_version": "1.0.0",
+  "package": "lib_onnx",
+  "bridge_abi_version": "0.1.0",
+  "ort_version": "1.31.1",
+  "generated_at": "2026-11-03T21:25:00Z",
+  "targets": {
+    "macos_arm64": {
+      "arch": "arm64",
+      "os": "macos",
+      "min_os_version": "12.0",
+      "supported_providers": ["CoreML", "CPU"],
+      "accelerators": ["Apple GPU", "Apple Neural Engine (ANE)"],
+      "binaries": [
+        {
+          "name": "liblib_onnx_bridge.dylib",
+          "sha256": "16be74c9a59ca6fce7492d4b3a3e16f205dc795dd97c8cf5c413338c016db9c8",
+          "role": "c_abi_bridge"
+        },
+        {
+          "name": "libonnxruntime.dylib",
+          "sha256": "17500d6b1e37e70f43a2c57d94233a1bc29fbcb297be0a5f8c7c13184f3307ba",
+          "role": "ort_core_and_coreml_ep"
+        }
+      ]
+    },
+    "ios_arm64": {
+      "arch": "arm64",
+      "os": "ios",
+      "min_os_version": "15.0",
+      "supported_providers": ["CoreML", "CPU"],
+      "accelerators": ["Apple GPU", "Apple Neural Engine (ANE)"],
+      "distribution": "CocoaPods / static framework with CoreML EP"
+    },
+    "android_arm64": {
+      "arch": "arm64-v8a",
+      "os": "android",
+      "min_api_level": 29,
+      "page_size_compatibility": "16kb_and_4kb",
+      "supported_providers": ["QNN", "CPU"],
+      "accelerators": ["Qualcomm Hexagon Tensor Processor (HTP NPU)"],
+      "distribution_notice": "QNN libraries (libQnnHtp.so) must be packaged per Qualcomm SDK distribution license or bundled with app."
+    }
+  }
+}
