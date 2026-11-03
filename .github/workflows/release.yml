@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (e.g. 0.1.0)
+        required: true
+        type: string
+      git_ref:
+        description: Git ref to release from
+        required: true
+        default: main
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build and publish GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+          fetch-depth: 0
+
+      - name: Setup Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+            example/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Update package versions
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          perl -0pi -e 's/^version: .+$/version: $ENV{VERSION}/m' pubspec.yaml
+          if [[ "$VERSION" == *+* ]]; then
+            EXAMPLE_VERSION="$VERSION"
+          else
+            EXAMPLE_VERSION="${VERSION}+1"
+          fi
+          export EXAMPLE_VERSION
+          perl -0pi -e 's/^version: .+$/version: $ENV{EXAMPLE_VERSION}/m' example/pubspec.yaml
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          (cd example && flutter pub get)
+
+      - name: Check native C ABI bridge syntax
+        run: |
+          clang -fsyntax-only -Wall -Wno-unused-result \
+            -I native/include \
+            -I native/third_party/onnxruntime/include \
+            native/src/lib_onnx_bridge.c
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze package
+        run: flutter analyze
+
+      - name: Analyze example
+        working-directory: example
+        run: flutter analyze
+
+      - name: Run Dart unit tests
+        run: |
+          dart test \
+            test/tensor_test.dart \
+            test/execution_policy_test.dart \
+            test/embedding_adapter_test.dart \
+            test/model_manifest_test.dart
+
+      - name: Validate pub package (dry-run)
+        run: flutter pub publish --dry-run --ignore-warnings
+
+      - name: Create release artifacts
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist/release
+          tar -czf "dist/release/lib_onnx-source-${VERSION}.tar.gz" \
+            --exclude='.git' \
+            --exclude='.dart_tool' \
+            --exclude='.github' \
+            --exclude='build' \
+            --exclude='dist' \
+            --exclude='.cache' \
+            --exclude='.venv' \
+            --exclude='example/.dart_tool' \
+            --exclude='example/build' \
+            .
+          (
+            cd dist/release
+            sha256sum * > SHA256SUMS
+          )
+
+      - name: Commit release version bump
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git add pubspec.yaml example/pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "Release files are already current for v${VERSION}."
+          else
+            git commit -m "chore(release): v${VERSION}"
+          fi
+          git push origin "HEAD:${{ inputs.git_ref }}"
+
+      - name: Create GitHub release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}" dist/release/* \
+            --target "$(git rev-parse HEAD)" \
+            --generate-notes \
+            --title "v${VERSION}"
+
+      - name: Dispatch pub.dev publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh workflow run publish.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "v${VERSION}" \
+            -f version="${VERSION}" \
+            -f git_ref="v${VERSION}"
