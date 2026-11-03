@@ -1,7 +1,7 @@
 name: lib_onnx_example
 description: Demonstrates hardware acceleration, diagnostics, and embedding workflows using lib_onnx.
 publish_to: 'none'
-version: 0.1.0
+version: 0.1.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
