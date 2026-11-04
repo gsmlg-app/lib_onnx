@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "cases": [
+    {
+      "case": "corrupt-archive",
+      "status": "passed",
+      "rejection": "SHA256 mismatch"
+    },
+    {
+      "case": "missing-offline-archive",
+      "status": "passed",
+      "rejection": "Pinned ORT archive missing"
+    },
+    {
+      "case": "ios-never-uses-macos-library",
+      "status": "passed",
+      "rejection": "separately built device/simulator"
+    },
+    {
+      "case": "android-needs-qnn-inputs",
+      "status": "passed",
+      "rejection": "matching Qualcomm runtime libraries"
+    },
+    {
+      "case": "old-bundle-abi",
+      "status": "passed",
+      "rejection": "Native bundle target/SDK/ABI/ORT mismatch"
+    }
+  ]
+}

@@ -40,9 +40,13 @@ jobs:
         with:
           ref: ${{ env.PUBLISH_REF }}
 
+      - name: Enforce release acceptance gate
+        run: python3 tools/release_gate.py
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -145,8 +149,8 @@ jobs:
           for attempt in {1..40}; do
             sleep 15
             resp="$(curl -sS "https://pub.dev/api/packages/${PACKAGE}" || true)"
-            latest="$(echo "$resp" | python3 -c 'import json, sys; data = json.load(sys.stdin); print(data.get("latest", {}).get("version", ""))' 2>/dev/null || true)"
-            if [[ "$latest" == "$VERSION" ]]; then
+            indexed="$(echo "$resp" | VERSION="$VERSION" python3 -c 'import json, os, sys; data = json.load(sys.stdin); print("yes" if any(v.get("version") == os.environ["VERSION"] for v in data.get("versions", [])) else "no")' 2>/dev/null || true)"
+            if [[ "$indexed" == "yes" ]]; then
               echo "${PACKAGE} ${VERSION} is indexed"
               exit 0
             fi

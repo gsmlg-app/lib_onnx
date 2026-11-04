@@ -1,11 +1,11 @@
 name: lib_onnx_example
 description: Demonstrates hardware acceleration, diagnostics, and embedding workflows using lib_onnx.
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0-dev.1+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: '>=3.19.0'
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.38.0'
 
 dependencies:
   flutter:
@@ -20,3 +20,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/mlp_smoke.onnx

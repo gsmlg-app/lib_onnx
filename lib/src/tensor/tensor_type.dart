@@ -25,7 +25,8 @@ enum TensorType {
       }
     }
     throw UnsupportedError(
-        'Unsupported or unrecognized ONNX native data type code: $code');
+      'Unsupported or unrecognized ONNX native data type code: $code',
+    );
   }
 
   static TensorType fromName(String name) {
@@ -67,7 +68,25 @@ enum TensorType {
         );
       default:
         throw UnsupportedError(
-            'Unknown or unsupported ONNX tensor data type: "$name"');
+          'Unknown or unsupported ONNX tensor data type: "$name"',
+        );
     }
   }
+}
+
+/// Checked concrete tensor shape; model metadata may separately contain -1.
+int checkedElementCount(List<int> shape) {
+  if (shape.length > 0x7fffffff || shape.any((d) => d < 0)) {
+    throw ArgumentError('Invalid actual tensor shape: $shape');
+  }
+  if (shape.contains(0)) return 0;
+  var count = BigInt.one;
+  for (final d in shape) {
+    count *= BigInt.from(d);
+    // All supported widths must remain representable by signed native sizes.
+    if (count > (BigInt.one << 60) - BigInt.one) {
+      throw ArgumentError('Tensor size overflow: $shape');
+    }
+  }
+  return count.toInt();
 }

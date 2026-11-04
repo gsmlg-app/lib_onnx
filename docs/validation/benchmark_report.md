@@ -1,25 +1,9 @@
-# 性能基准与压力测试报告
+# Correctness/stress evidence — 2026-11-04
 
-## 1. 压力测试负载指标
+The previous80–84µs /12,000runs/s report measured the old synchronous implementation and lacked raw benchmark evidence. It is retained in historical Git only and is not a benchmark for ABI2. The previous blanket "no leaks"/RSS/ANE statements exceeded the tests and are superseded.
 
-在真实 Apple Silicon (Apple M1 Max) 硬件上运行初始压力测试套件（执行于 `test/stress_and_lifecycle_test.dart`）：
+Current `dart test` passes59 tests, including100 load/run/await-close cycles and1000 real CPU Identity executions with exact bytes. These are correctness/lifecycle tests, not an accelerator throughput benchmark. Real MLP results under CPU and strict CoreML compute-unit configurations match `[1.5,2.5,3.5,4.5]`; individual duration_us values in raw logs are samples, not statistically controlled performance claims. Native run duration excludes queue/input preparation; timeout includes them.
 
-### 1.1 100 次加载 / 推理 / 销毁循环
-- **负载内容**：连续创建 100 个 `InferenceSession`，加载模型，完成单次推理验证，确定性调用 `close()` 释放。
-- **实测结果**：**100 次全部成功**。
-- **内存稳定性**：无原生句柄泄漏，无未配对 `pthread` 线程悬挂，进程 RSS 内存平稳。
+The native harness passes ASan+UBSan and a separate TSan build. macOS leaks reported0 leaked bytes for the checked non-sanitized process, with a restriction warning about read-only inspection. Only bridge/harness code is sanitizer-instrumented; prebuilt ORT, EPs and system frameworks are not. This evidence does not establish universal leak freedom, GPU/NPU utilization or Qwen performance.
 
-### 1.2 1,000 次连续高频推理
-- **负载内容**：单 Session 连续执行 1,000 次推理。
-- **总耗时**：**80 ~ 84 ms**。
-- **单次平均耗时**：**80.0 ~ 84.0 µs / run**。
-- **吞吐量**：约 **12,000 runs / sec**。
-
----
-
-## 2. 数值一致性评估
-
-- **Identity 算子**：输入 `[1.0, 2.0, 3.0, 4.0]`，输出与输入浮点位一致无偏差。
-- **MLP 激活算子**：`Relu(X * I + [0.5, 0.5, 0.5, 0.5])` 输出 `[1.5, 2.5, 3.5, 4.5]`，实测与理论值差异 $< 10^{-4}$。
-- **Embedding Pooling**：对含 padding 的序列进行 last-token pooling，精确识别有效末尾 token；L2 归一化后向量模长等于 $1.000000 \pm 10^{-6}$。
-- **正交测试**：归一化向量 $[1.0, 0.0]$ 与 $[0.0, 1.0]$ 计算余弦相似度精准等于 $0.000000$。
+No controlled warmup/repeat/thermal accelerator benchmark or real-text Qwen retrieval benchmark has run. Model-specific numeric and retrieval tolerances are fixed in the Qwen validation workflow before execution; no target is marked accepted from adapter unit tests.

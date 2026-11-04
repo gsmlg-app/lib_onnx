@@ -1,0 +1,4 @@
+$ dart run tools/validate_mlp.dart --provider=QNN --fallback=strict
+Running build hooks...Running build hooks...{"status":"failed","model":"test/fixtures/mlp_smoke.onnx","provider":"QNN","units":"ALL","fallback_policy":"strict","code":4,"ort_code":2,"stage":"qnn.initialize","error":"QNN execution provider is not supported in this build. ","hardware_acceptance":"not-run"}
+
+exit_code=1

@@ -1,27 +1,17 @@
-# 真实设备验证矩阵与硬件活动报告
+# Device and model acceptance — 2026-11-04
 
-## 1. 验证设备规格
+Historical correction: the previous report inferred "Hardware Observed" from Apple chip names and treated synthetic embedding/adapter tests as model acceptance. Those claims are withdrawn here; the original Git history remains intact.
 
-- **设备型号**：Apple MacBook Pro (Apple Silicon)
-- **芯片型号**：Apple M1 Max (10-core CPU, 24/32-core GPU, 16-core Apple Neural Engine)
-- **操作系统**：macOS Darwin arm64
-- **内存容量**：32 GB / 64 GB 统一内存
-- **测试时间**：2026-11-03
+| Device / target | Live inventory | Actual check | Status and limit |
+|---|---|---|---|
+| MacBook Pro / Apple M1 Max /32GiB | macOS27.0.1, Xcode27.2, arm64 | Real MLP under strict CoreML ALL, CPUAndGPU, CPUAndNeuralEngine, CPUOnly; CPU baseline; native tests; clean release consumers | Software routes pass; **physical GPU/ANE observation not-run** |
+| iPad Air13-inch M3 (iPad15,5) | available, paired physical device | devicectl inventory only | iOS ORT/CoreML device bundle, clean signed consumer and runtime acceptance **blocked**; device is present |
+| iOS simulator arm64 | Xcode simulator inventory present | Wrong-platform bundle rejection test | Separate simulator artifact/build **not-run**; cannot establish ANE |
+| AYANEO Pocket_DS /SG8275 /arm64-v8a | adb device, kernel pages4096; vendor libQnnHtp.so and libcdsprpc.so present | Read-only getprop/getconf/library inventory | No matching verified ORT QNN/HTP package input supplied; build/ELF/APK/device acceptance **blocked**; device is present |
+| Linux x64/arm64 | No local target run | Pinned correctness artifacts / CI configuration | Local consumer/device **not-run** |
 
----
+`tools/validate_mlp.dart` runs the actual305-byte MLP. Its source-file SHA256 is `cf26ee02305c2b808e9dd73ba908de34c5341ea690360ace4eaba53bdec3b775`, and model identity is `0d2cfad5ac8f58a6592d00055aa4b17f42a77cd0624c98b0aa8be697a3b5e407`. Logs in ../reviews/evidence/coreml-*.txt record requested units, strict policy, registered EP, task ID, actual unknowns and numerical output. Strict success prohibits ORT CPU-node fallback; it does not identify CoreML's internal physical unit.
 
-## 2. 目标模型与测试结果
+The clean consumer runs a different102-byte Identity fixture, file SHA256 `d3dc6ebdfff0c3b32a814eb77868bda8f4cdb9dc1538b6d1878560613bfb21cf`, identity `d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515`. Neither fixture establishes Qwen support. No Qwen3-Embedding-0.6B backend/profile has passed actual model or hardware acceptance.
 
-| 模型名称 | 算子构成 | 目标后端 | 实测结果 | 证据等级 | 耗时与表现 |
-|---|---|---|---|---|---|
-| `identity_float32.onnx` | Identity | ORT CPU | **通过** | None (CPU) | 纯 CPU 数值基准，数值完全吻合 |
-| `mlp_smoke.onnx` | MatMul + Add + Relu | Apple CoreML EP | **通过** | **Hardware Observed** (Apple M1 Max) | 激活 GPU/ANE，数值吻合 ($10^{-4}$ 误差容限) |
-| `embedding_pipeline` | Gather + MatMul + LastTokenPool + Norm | CoreML + Adapter | **通过** | **Hardware Observed** | 向量准确归一化，正交性与相似度计算通过 |
-
----
-
-## 3. 严格回退与安全性验证
-
-- **CUDA EP 拦截**：在缺少 NVIDIA GPU 的 macOS 宿主上，在 `FallbackPolicy.strict` 下请求 CUDA 立即抛出 `StateError`，杜绝静默 CPU 降级。
-- **协作成对取消**：执行前取消立即中断；执行中取消有效标记并丢弃运算结果，不发生段错误。
-- **幂等析构**：Session 重复关闭 (`close()`) 验证安全无副作用。
+Inventory commands: `xcrun devicectl list devices --timeout 5`, `adb devices -l`, `adb -s 10.100.8.115:5555 shell getprop ro.soc.model`, `getprop ro.product.cpu.abi`, `getconf PAGE_SIZE`, and read-only vendor-library checks. Presence of a vendor HTP library is not permission to redistribute it and does not prove an application initialized that backend.

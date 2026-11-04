@@ -6,6 +6,7 @@ Builds compliant ONNX ModelProto binaries for testing lib_onnx.
 
 import struct
 import os
+from pathlib import Path
 
 def encode_varint(value: int) -> bytes:
     res = bytearray()
@@ -106,9 +107,49 @@ def make_model(nodes: list[bytes], inputs: list[bytes], outputs: list[bytes],
     model.extend(field_bytes(8, opset))
     return bytes(model)
 
+def safety_models(fixtures_dir):
+    for dtype, name in [(1, 'float32'), (10, 'float16'), (7, 'int64'),
+                        (6, 'int32'), (3, 'int8'), (2, 'uint8'), (9, 'bool')]:
+        for suffix, shape in [('', [1, 4]), ('_scalar', []), ('_empty', [0, 4]), ('_rank20', [1]*20)]:
+            model = make_model([make_node('Identity', ['X'], ['Y'])],
+                               [make_value_info('X', dtype, shape)],
+                               [make_value_info('Y', dtype, shape)])
+            Path(fixtures_dir, f'identity_{name}{suffix}.onnx').write_bytes(model)
+    # A real long-running ORT Loop; cancellation uses RunOptions termination.
+    def init(name, dtype, raw):
+        return field_varint(2,dtype)+field_str(8,name)+field_bytes(9,raw)
+    body = (field_bytes(1,make_node('Identity',['cond'],['cond_out'])) +
+            field_bytes(1,make_node('Identity',['carry'],['carry_out'])) +
+            field_str(2,'long_loop_body') +
+            b''.join(field_bytes(11,make_value_info(n,t,d)) for n,t,d in
+                     [('iteration',7,[]),('cond',9,[]),('carry',1,[1,4])]) +
+            field_bytes(12,make_value_info('cond_out',9,[])) +
+            field_bytes(12,make_value_info('carry_out',1,[1,4])))
+    attr=field_str(1,'body')+field_bytes(6,body)+field_varint(20,5)
+    loop=make_node('Loop',['trip','condition','X'],['Y'])+field_bytes(5,attr)
+    Path(fixtures_dir,'long_loop.onnx').write_bytes(make_model(
+        [loop],[make_value_info('X',1,[1,4])],[make_value_info('Y',1,[1,4])],
+        [init('trip',7,struct.pack('<q',100000000)),init('condition',9,b'\1')]))
+    # ORT returns a valid tensor followed by a sequence: exercise partial output cleanup.
+    seq_type = field_bytes(4, field_bytes(1, make_tensor_type(1, [1, 4])))
+    seq_info = field_str(1, 'sequence') + field_bytes(2, seq_type)
+    model = make_model([make_node('Identity', ['X'], ['Y']),
+                        make_node('SequenceConstruct', ['X'], ['sequence'])],
+                       [make_value_info('X', 1, [1, 4])],
+                       [make_value_info('Y', 1, [1, 4]), seq_info])
+    Path(fixtures_dir, 'partial_sequence.onnx').write_bytes(model)
+    # Cast float -> double, unsupported by this bridge's declared interface.
+    attr = field_str(1, 'to') + field_varint(3, 11) + field_varint(20, 2)
+    cast = make_node('Cast', ['X'], ['Y']) + field_bytes(5, attr)
+    Path(fixtures_dir, 'unsupported_double.onnx').write_bytes(make_model(
+        [cast], [make_value_info('X', 1, [1,4])], [make_value_info('Y', 11, [1,4])]))
+
+
 def main():
     fixtures_dir = os.path.join(os.path.dirname(__file__), "..", "test", "fixtures")
     os.makedirs(fixtures_dir, exist_ok=True)
+
+    safety_models(fixtures_dir)
 
     # 1. Identity model: X [1, 4] -> Y [1, 4]
     n_id = make_node("Identity", ["X"], ["Y"], "id_0")

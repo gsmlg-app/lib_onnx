@@ -1,36 +1,49 @@
-cmake_minimum_required(VERSION 3.15)
-project(lib_onnx_bridge C)
-
+cmake_minimum_required(VERSION 3.22)
+# Set defaults before project(): Apple platform detection otherwise caches the
+# host OS version as the deployment target. Explicit consumer values win.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_OSX_SYSROOT MATCHES "iphone")
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "iOS deployment target")
+elseif(CMAKE_HOST_APPLE AND (NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin"))
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "macOS deployment target")
+endif()
+project(lib_onnx_bridge VERSION 0.2.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/include
-)
+# An exact target-specific ORT library is required for cross builds. In
+# particular, an iOS build must never inherit the macOS developer artifact.
+set(ORT_LIBRARY "" CACHE FILEPATH "Exact ONNX Runtime 1.31.1 target library")
+set(ORT_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/include" CACHE PATH "ORT 1.31.1 headers")
+if(NOT ORT_LIBRARY)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    set(ORT_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/lib/macos_arm64/libonnxruntime.dylib")
+  else()
+    message(FATAL_ERROR "Set ORT_LIBRARY to a verified ONNX Runtime 1.31.1 library for ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}. See docs/distribution.md.")
+  endif()
+endif()
+if(NOT EXISTS "${ORT_LIBRARY}")
+  message(FATAL_ERROR "ORT_LIBRARY does not exist: ${ORT_LIBRARY}")
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if(ORT_LIBRARY MATCHES "macos|osx")
+    message(FATAL_ERROR "A macOS ORT binary cannot be linked into iOS")
+  endif()
+endif()
 
-add_library(lib_onnx_bridge SHARED
-    src/lib_onnx_bridge.c
-)
-
+add_library(lib_onnx_bridge SHARED src/lib_onnx_bridge.c src/library_locator.c)
+target_include_directories(lib_onnx_bridge PRIVATE include "${ORT_INCLUDE_DIR}")
+target_compile_options(lib_onnx_bridge PRIVATE -Wall -Wextra)
+find_package(Threads REQUIRED)
+target_link_libraries(lib_onnx_bridge PRIVATE "${ORT_LIBRARY}" Threads::Threads ${CMAKE_DL_LIBS})
 if(APPLE)
-    find_library(COREML_FRAMEWORK CoreML)
-    target_link_libraries(lib_onnx_bridge
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/lib/macos_arm64/libonnxruntime.dylib
-        ${COREML_FRAMEWORK}
-        pthread
-    )
-    set_target_properties(lib_onnx_bridge PROPERTIES
-        INSTALL_RPATH "@loader_path/../third_party/onnxruntime/lib/macos_arm64;@loader_path/."
-    )
+  set_target_properties(lib_onnx_bridge PROPERTIES BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path")
 elseif(ANDROID)
-    target_link_libraries(lib_onnx_bridge
-        onnxruntime
-        log
-        pthread
-    )
+  if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "The experimental QNN route currently targets arm64-v8a only")
+  endif()
+  target_link_options(lib_onnx_bridge PRIVATE "-Wl,-z,max-page-size=16384")
+  # This flag does not establish compatibility of ORT/QNN or final APK. Audit
+  # every packaged ELF and the final package with tools/audit_android_pages.py.
 else()
-    target_link_libraries(lib_onnx_bridge
-        onnxruntime
-        pthread
-    )
+  set_target_properties(lib_onnx_bridge PROPERTIES BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
 endif()

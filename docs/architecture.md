@@ -1,65 +1,24 @@
-# lib_onnx 架构设计与系统规范
+# Runtime ownership and ABI 2
 
-## 1. 系统层次与调用边界
+Dart APIs call a thin C bridge over the pinned ORT C API. `createAsync` and model loading run on execution isolates; input preparation/submission runs on another short-lived execution isolate. Native inference runs in a Runtime worker pool. The caller isolate polls terminal task handles and handles cancellation independently of ORT Run.
 
-`lib_onnx` 遵循分层设计，对外导出纯 Dart 面向对象 API，内部通过 Dart FFI 调用轻量级 C ABI 桥接层，再桥接至官方 ONNX Runtime（ORT）C API 与各硬件加速 Execution Provider（EP）：
+| Resource | Owner and lifetime |
+|---|---|
+| OrtEnv/workers | Runtime; Sessions retain OrtEnv beyond Runtime owner's close |
+| OrtSession/metadata | Session; accepted Tasks retain Session through result acknowledgement |
+| Task/RunOptions/error | One per accepted submission, with native process-unique task ID; requestId is correlation only |
+| Inputs/names | Copied at native submission; originals can be destroyed immediately afterwards |
+| Output OrtValues/tensors/diagnostic | Task retains all results until explicit task_release; no ephemeral callback arrays |
+| Dart output | Validated copy; no native buffer retained in public tensor |
+| Sync error | Thread-local, consumed on the same thread before further native calls |
+| Async error | Independent immutable terminal Error in Task, including status, ORT code and stage |
 
-```
-+-------------------------------------------------------------+
-|               应用层 / Flutter UI Isolate                     |
-|  (InferenceSession, SessionOptions, RunOptions, OnnxTensor)  |
-+-------------------------------------------------------------+
-                              |
-                              v
-+-------------------------------------------------------------+
-|                  Dart FFI 抽象与内存安全层                    |
-|  (LibOnnxBindings, NativeLibrary, CStructures, Adapter)     |
-+-------------------------------------------------------------+
-                              |
-                              v (Pure C ABI)
-+-------------------------------------------------------------+
-|                  lib_onnx Native C Bridge                   |
-|  (lib_onnx_bridge.c, 有界工作线程池, 请求级取消, 诊断报告)      |
-+-------------------------------------------------------------+
-                              |
-                              v (ORT C API)
-+-------------------------------------------------------------+
-|                 ONNX Runtime Core (v1.31.1)                 |
-|     +--------------------+----------------------------+     |
-|     |  Apple CoreML EP   |      Qualcomm QNN EP       |     |
-|     | (Apple GPU / ANE)  |     (Hexagon HTP NPU)      |     |
-|     +--------------------+----------------------------+     |
-|     |                   ORT CPU Engine                |     |
-|     +-------------------------------------------------+     |
-+-------------------------------------------------------------+
-```
+Each Session admits at most `maxConcurrentRuns + maxQueueDepth` tasks, including input preparation. The default Session executes one task and permits 16 pending tasks. Runtime additionally bounds total admission to its worker count plus 64. Copying occurs outside the scheduler mutex. Runtime workers skip saturated Sessions so other Sessions can progress. Public Session thread, optimization, memory-pattern, queue and concurrency settings reach native code.
 
-### 1.1 纯 C ABI 契约
-- 桥接层对外仅导出 `lib_onnx.h` 中定义的 C 符号，完全隐藏 C++ 符号和 STL 容器，确保跨不同平台编译器（Clang/GCC/MSVC）和 Dart FFI 版本的稳定二进制兼容性。
-- 原生状态使用非透明指针（Opaque Handles：`LibOnnxRuntimeHandle`, `LibOnnxSessionHandle`, `LibOnnxTensorHandle`, `LibOnnxDiagnosticReportHandle`）传递，避免裸指针跨 Isolate 悬垂。
+Close uses **cancel and drain**. Nonblocking begin-close rejects new work and sets termination on accepted tasks. Dart awaits its submissions/results, then destroys native owners on execution isolates. Runtime waits for concurrent loads, closes its Sessions, joins workers/monitor off the UI isolate, and releases its environment owner reference. Native result handles may outlive both owners safely. Public close is idempotent and awaitable; native destroy releases one owner reference exactly once.
 
-## 2. 线程模型与异步执行
+Timeouts include input preparation, queueing and native Run, use CLOCK_MONOTONIC, and are monitored independently of the Run thread. Each task has its own OrtRunOptions. Cancellation/timeout completes after native execution has returned; no claim is made that GPU/NPU work can be hard-stopped. Completion wins over late cancellation. Removable token listeners are removed in all terminal paths.
 
-### 2.1 保护 Flutter UI Isolate
-- 模型加载、图编译和模型推理均在后台 Native Worker 线程池（通过 `pthread` 实现）中有界排队执行，严禁阻塞 Flutter UI 渲染线程。
-- Dart 层提供 `Future<Map<String, OnnxTensor>> run(...)` 接口，等待底层执行完毕后通过 Future 完成结果投递。
+There is no NativeCallable callback to close prematurely. Helpers exit only after transferring an integer handle; the public Session retains pending work until explicit acknowledgement. Applications must await Runtime.close before terminating its owning isolate or hot restart. Abrupt isolate/process termination is outside this controlled shutdown contract; finalizers/GC do not cancel native work.
 
-### 2.2 请求级独立取消
-- 每次推理调用分配全局唯一 `requestId`。
-- 支持 `CancellationToken` 协作式取消：
-  - 排队期间取消：从任务队列中直接剔除，返回 `LIB_ONNX_ERR_CANCELLED`。
-  - 执行期间取消：设置原子标志位，推理完成后丢弃结果并立即释放临时原生缓冲区，不污染或中断其他并发任务。
-
-### 2.3 确定性释放与生命周期安全
-- `InferenceSession.close()` 为主要资源回收边界，操作幂等（多次调用安全）。
-- 关闭流程：
-  1. 标记 `is_closed = 1`，拒绝后续新任务；
-  2. 取消队列中尚未运行的任务；
-  3. 等待正在执行的原生内核执行完毕；
-  4. 确定性释放 OrtSession、元数据和模型图句柄。
-
-## 3. 内存所有权与传输策略
-
-- **CPU 输入/输出**：Dart `OnnxTensor` 封装底层直接内存缓冲区（`Float32List`, `Int64List` 等）。输入张量通过 `copy_data = 1` 移交原生张量所有权，保证在 Dart GC 动作下原生计算依然安全。
-- **输出内存**：由 ORT Allocator 生成并绑定在 `OrtValue` 上，Dart 包装层读取后确定性析构原生张量，杜绝内存泄漏。
-- **Hot-Restart 安全**：即使 Flutter 进行 Hot Restart，原生线程池由于宿主进程保活，会在超时或任务结束后自动清理未认领任务，不引发段错误。
+ABI 2 removes the unsafe callback/caller-request-ID cancellation ABI. The loader rejects old bridges and ORT version mismatches. `tools/generate_bindings.py` regenerates checked-in Dart bindings from the header; see migration documentation.

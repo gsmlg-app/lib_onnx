@@ -1,0 +1,9 @@
+# Declared reproducible validation toolchain for Python 3.11.
+# Installation and full Qwen execution are separate acceptance checks.
+numpy==2.2.6
+onnx==1.18.0
+huggingface-hub==0.33.4
+transformers==4.53.3
+tokenizers==0.21.2
+safetensors==0.5.3
+torch==2.7.1

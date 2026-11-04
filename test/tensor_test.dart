@@ -3,6 +3,32 @@ import 'package:lib_onnx/lib_onnx.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('scalar is one element and zero dimension is empty', () {
+    expect(OnnxTensor.fromUint8([], Uint8List(1)).elementCount, 1);
+    expect(OnnxTensor.fromUint8([2, 0, 3], Uint8List(0)).elementCount, 0);
+    expect(
+      () => OnnxTensor.fromUint8([0, -1], Uint8List(0)),
+      throwsArgumentError,
+    );
+    expect(
+      () => OnnxTensor.fromFloat16Bytes([-1], Uint8List(0)),
+      throwsArgumentError,
+    );
+    expect(
+      () => OnnxTensor.fromUint8([0x7fffffffffffffff, 4], Uint8List(0)),
+      throwsArgumentError,
+    );
+  });
+  test('native output validates buffer before typed access', () {
+    expect(
+      () => OnnxTensor.fromNative(
+        shape: [4],
+        type: TensorType.uint8,
+        rawBytes: Uint8List(16),
+      ),
+      throwsArgumentError,
+    );
+  });
   group('OnnxTensor & TensorType', () {
     test('Float32 tensor creation and data view', () {
       final data = Float32List.fromList([1.0, 2.5, -3.0, 4.25]);
@@ -41,10 +67,7 @@ void main() {
 
     test('Shape mismatch throws ArgumentError', () {
       final data = Float32List.fromList([1.0, 2.0, 3.0]);
-      expect(
-        () => OnnxTensor.fromFloat32([2, 2], data),
-        throwsArgumentError,
-      );
+      expect(() => OnnxTensor.fromFloat32([2, 2], data), throwsArgumentError);
     });
 
     test('Type validation explicitly rejects unsupported types per spec', () {

@@ -39,9 +39,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Enforce release acceptance gate
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 tools/release_gate.py --version "$RELEASE_VERSION"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -107,17 +113,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist/release
-          tar -czf "dist/release/lib_onnx-source-${VERSION}.tar.gz" \
-            --exclude='.git' \
-            --exclude='.dart_tool' \
-            --exclude='.github' \
-            --exclude='build' \
-            --exclude='dist' \
-            --exclude='.cache' \
-            --exclude='.venv' \
-            --exclude='example/.dart_tool' \
-            --exclude='example/build' \
-            .
+          dart pub publish --to-archive="dist/release/lib_onnx-source-${VERSION}.tar.gz"
           (
             cd dist/release
             sha256sum * > SHA256SUMS
@@ -140,7 +136,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "v${VERSION}" dist/release/* \
+          release_flags=()
+          if [[ "$VERSION" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "v${VERSION}" dist/release/* "${release_flags[@]}" \
             --target "$(git rev-parse HEAD)" \
             --generate-notes \
             --title "v${VERSION}"

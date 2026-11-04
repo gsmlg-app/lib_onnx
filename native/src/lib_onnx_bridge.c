@@ -1,1089 +1,1306 @@
+#define _POSIX_C_SOURCE 200809L
 #include "lib_onnx.h"
 #include "onnxruntime_c_api.h"
-#include "coreml_provider_factory.h"
-
+#include <limits.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <strings.h>
+#include <time.h>
 
-#if defined(__APPLE__)
-#include <sys/sysctl.h>
-#endif
-
-#define BRIDGE_VERSION_MAJOR 0
-#define BRIDGE_VERSION_MINOR 1
-#define BRIDGE_VERSION_PATCH 0
-#define BRIDGE_VERSION_STRING "0.1.0"
-
-static const OrtApi* g_ort = NULL;
-static pthread_mutex_t g_init_mutex = PTHREAD_MUTEX_INITIALIZER;
-static char g_last_error[1024] = {0};
-static pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static void set_last_error(const char* msg) {
-  pthread_mutex_lock(&g_error_mutex);
-  strncpy(g_last_error, msg, sizeof(g_last_error) - 1);
-  g_last_error[sizeof(g_last_error) - 1] = '\0';
-  pthread_mutex_unlock(&g_error_mutex);
+/* All mutable scheduler state is protected by Runtime.mu. Terminal task data is
+ * published under that lock and remains owned until the last task reference.
+ * No callback crosses a native/Dart thread boundary. */
+static const OrtApi *ort;
+static pthread_once_t ort_once = PTHREAD_ONCE_INIT;
+static atomic_int_fast64_t next_task_id = 1;
+typedef struct {
+  int code, ort_code;
+  char stage[64], message[2048];
+} Error;
+static _Thread_local Error last_error;
+static void init_ort(void) {
+  const OrtApiBase *b = OrtGetApiBase();
+  if (b)
+    ort = b->GetApi(ORT_API_VERSION);
 }
-
-static int check_ort_status(OrtStatus* status) {
-  if (status == NULL) return LIB_ONNX_OK;
-  const char* msg = g_ort->GetErrorMessage(status);
-  set_last_error(msg ? msg : "Unknown ONNX Runtime error");
-  g_ort->ReleaseStatus(status);
-  return LIB_ONNX_ERR_GENERIC;
+static int error(int code, const char *stage, const char *msg) {
+  last_error = (Error){.code = code};
+  snprintf(last_error.stage, sizeof(last_error.stage), "%s", stage);
+  snprintf(last_error.message, sizeof(last_error.message), "%s", msg);
+  return code;
 }
-
-static void ensure_ort_initialized(void) {
-  pthread_mutex_lock(&g_init_mutex);
-  if (g_ort == NULL) {
-    const OrtApiBase* base = OrtGetApiBase();
-    if (base != NULL) {
-      g_ort = base->GetApi(ORT_API_VERSION);
-    }
-  }
-  pthread_mutex_unlock(&g_init_mutex);
-}
-
-/* Version API */
-LIB_ONNX_EXPORT int32_t lib_onnx_version_major(void) { return BRIDGE_VERSION_MAJOR; }
-LIB_ONNX_EXPORT int32_t lib_onnx_version_minor(void) { return BRIDGE_VERSION_MINOR; }
-LIB_ONNX_EXPORT int32_t lib_onnx_version_patch(void) { return BRIDGE_VERSION_PATCH; }
-LIB_ONNX_EXPORT const char* lib_onnx_version_string(void) { return BRIDGE_VERSION_STRING; }
-
-LIB_ONNX_EXPORT const char* lib_onnx_ort_version_string(void) {
-  ensure_ort_initialized();
-  if (g_ort && OrtGetApiBase()) {
-    return OrtGetApiBase()->GetVersionString();
-  }
-  return "Unknown";
-}
-
-LIB_ONNX_EXPORT const char* lib_onnx_get_last_error(void) {
-  pthread_mutex_lock(&g_error_mutex);
-  const char* res = g_last_error;
-  pthread_mutex_unlock(&g_error_mutex);
-  return res;
-}
-
-LIB_ONNX_EXPORT void lib_onnx_clear_last_error(void) {
-  pthread_mutex_lock(&g_error_mutex);
-  g_last_error[0] = '\0';
-  pthread_mutex_unlock(&g_error_mutex);
-}
-
-/* Worker Task for Async Runner */
-typedef struct AsyncTask {
-  int64_t run_id;
-  struct LibOnnxSession* session;
-  char** input_names;
-  struct LibOnnxTensor** input_tensors;
-  int32_t num_inputs;
-  char** output_names;
-  int32_t num_outputs;
-  int64_t timeout_ms;
-  LibOnnxCompletionCallback callback;
-  void* user_data;
-  int is_cancelled;
-  struct AsyncTask* next;
-} AsyncTask;
-
-/* Runtime */
-struct LibOnnxRuntime {
-  OrtEnv* env;
-  int32_t max_concurrency;
-  pthread_t* worker_threads;
-  int32_t num_workers;
-  AsyncTask* task_queue_head;
-  AsyncTask* task_queue_tail;
-  int32_t task_queue_size;
-  int32_t is_shutting_down;
-  pthread_mutex_t queue_mutex;
-  pthread_cond_t queue_cond;
-};
-
-static void* worker_thread_loop(void* arg);
-
-LIB_ONNX_EXPORT LibOnnxRuntimeHandle lib_onnx_runtime_create(int32_t max_concurrency) {
-  ensure_ort_initialized();
-  if (g_ort == NULL) {
-    set_last_error("Failed to acquire ONNX Runtime C API pointer");
-    return NULL;
-  }
-
-  struct LibOnnxRuntime* rt = (struct LibOnnxRuntime*)calloc(1, sizeof(struct LibOnnxRuntime));
-  if (!rt) return NULL;
-
-  rt->max_concurrency = max_concurrency > 0 ? max_concurrency : 4;
-  pthread_mutex_init(&rt->queue_mutex, NULL);
-  pthread_cond_init(&rt->queue_cond, NULL);
-
-  OrtStatus* status = g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "lib_onnx", &rt->env);
-  if (status != NULL) {
-    check_ort_status(status);
-    free(rt);
-    return NULL;
-  }
-
-  // Start background worker pool
-  rt->num_workers = rt->max_concurrency;
-  rt->worker_threads = (pthread_t*)malloc(sizeof(pthread_t) * rt->num_workers);
-  for (int i = 0; i < rt->num_workers; i++) {
-    pthread_create(&rt->worker_threads[i], NULL, worker_thread_loop, rt);
-  }
-
-  return rt;
-}
-
-LIB_ONNX_EXPORT void lib_onnx_runtime_destroy(LibOnnxRuntimeHandle runtime) {
-  if (!runtime) return;
-
-  pthread_mutex_lock(&runtime->queue_mutex);
-  runtime->is_shutting_down = 1;
-  pthread_cond_broadcast(&runtime->queue_cond);
-  pthread_mutex_unlock(&runtime->queue_mutex);
-
-  for (int i = 0; i < runtime->num_workers; i++) {
-    pthread_join(runtime->worker_threads[i], NULL);
-  }
-  free(runtime->worker_threads);
-
-  // Drain remaining tasks
-  AsyncTask* curr = runtime->task_queue_head;
-  while (curr != NULL) {
-    AsyncTask* next = curr->next;
-    if (curr->callback) {
-      curr->callback(curr->run_id, LIB_ONNX_ERR_CLOSED, "Runtime shutting down", NULL, 0, NULL, curr->user_data);
-    }
-    for (int i = 0; i < curr->num_inputs; i++) free(curr->input_names[i]);
-    free(curr->input_names);
-    free(curr->input_tensors);
-    for (int i = 0; i < curr->num_outputs; i++) free(curr->output_names[i]);
-    free(curr->output_names);
-    free(curr);
-    curr = next;
-  }
-
-  if (runtime->env) {
-    g_ort->ReleaseEnv(runtime->env);
-  }
-
-  pthread_mutex_destroy(&runtime->queue_mutex);
-  pthread_cond_destroy(&runtime->queue_cond);
-  free(runtime);
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_runtime_is_provider_supported(LibOnnxRuntimeHandle runtime, const char* provider_name) {
-  (void)runtime;
-  ensure_ort_initialized();
-  if (!g_ort || !provider_name) return 0;
-
-  char** providers = NULL;
-  int num_providers = 0;
-  OrtStatus* status = g_ort->GetAvailableProviders(&providers, &num_providers);
-  if (status != NULL) {
-    g_ort->ReleaseStatus(status);
+static int status_error(OrtStatus *status, const char *stage) {
+  if (!status)
     return 0;
-  }
+  int oc = ort->GetErrorCode(status);
+  error(LIB_ONNX_ERR_GENERIC, stage, ort->GetErrorMessage(status));
+  last_error.ort_code = oc;
+  ort->ReleaseStatus(status);
+  return last_error.code;
+}
+static int oom(void) {
+  return error(LIB_ONNX_ERR_OUT_OF_MEMORY, "allocation",
+               "Native allocation failed");
+}
+static int64_t now_us(void) {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+int64_t lib_onnx_monotonic_us(void) { return now_us(); }
+uint32_t lib_onnx_abi_version(void) { return LIB_ONNX_BRIDGE_ABI_VERSION; }
+int32_t lib_onnx_version_major(void) { return 0; }
+int32_t lib_onnx_version_minor(void) { return 2; }
+int32_t lib_onnx_version_patch(void) { return 0; }
+const char *lib_onnx_version_string(void) { return "0.2.0-dev.1"; }
+const char *lib_onnx_ort_version_string(void) {
+  return OrtGetApiBase()->GetVersionString();
+}
+const char *lib_onnx_get_last_error(void) { return last_error.message; }
+const char *lib_onnx_get_last_error_stage(void) { return last_error.stage; }
+int32_t lib_onnx_get_last_error_code(void) { return last_error.code; }
+int32_t lib_onnx_get_last_ort_code(void) { return last_error.ort_code; }
+void lib_onnx_clear_last_error(void) { last_error = (Error){0}; }
 
-  int supported = 0;
-  for (int i = 0; i < num_providers; i++) {
-    if (strcasecmp(providers[i], provider_name) == 0 ||
-        (strncasecmp(providers[i], provider_name, strlen(provider_name)) == 0)) {
-      supported = 1;
-      break;
+/* The single native dtype table supplies BOTH conversions and byte widths. */
+typedef struct {
+  ONNXTensorElementDataType ort_type;
+  size_t width;
+} Dtype;
+static const Dtype dtypes[] = {{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, 0},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 4},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, 2},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, 8},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 4},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, 1},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, 1},
+                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, 1}};
+static int dtype_from_ort(ONNXTensorElementDataType t) {
+  for (int i = 1; i < 8; i++)
+    if (dtypes[i].ort_type == t)
+      return i;
+  return 0;
+}
+static int tensor_size(int dtype, const int64_t *dims, int rank, int64_t *count,
+                       size_t *bytes) {
+  if (dtype < 1 || dtype > 7)
+    return error(11, "tensor.type", "Unsupported tensor element type");
+  if (rank < 0 || (rank && !dims) || (size_t)rank > SIZE_MAX / sizeof(int64_t))
+    return error(2, "tensor.shape", "Invalid rank/shape pointer");
+  /* Check every dimension even if an earlier zero makes the tensor empty. */
+  int empty = 0;
+  for (int i = 0; i < rank; i++) {
+    if (dims[i] < 0)
+      return error(2, "tensor.shape",
+                   "Actual tensor dimensions must be nonnegative");
+    if (!dims[i])
+      empty = 1;
+  }
+  uint64_t n = empty ? 0 : 1;
+  if (!empty)
+    for (int i = 0; i < rank; i++) {
+      if ((uint64_t)dims[i] > (uint64_t)INT64_MAX / n)
+        return error(2, "tensor.shape", "Element count overflow");
+      n *= (uint64_t)dims[i];
     }
-  }
-
-  g_ort->ReleaseAvailableProviders(providers, num_providers);
-  return supported;
+  if (n > SIZE_MAX / dtypes[dtype].width ||
+      n > (uint64_t)INT64_MAX / dtypes[dtype].width)
+    return error(2, "tensor.shape", "Tensor byte size overflow");
+  *count = (int64_t)n;
+  *bytes = (size_t)n * dtypes[dtype].width;
+  return 0;
 }
-
-LIB_ONNX_EXPORT int32_t lib_onnx_runtime_get_available_providers(LibOnnxRuntimeHandle runtime, char* buffer, size_t buffer_len) {
-  (void)runtime;
-  ensure_ort_initialized();
-  if (!g_ort || !buffer || buffer_len == 0) return 0;
-
-  char** providers = NULL;
-  int num_providers = 0;
-  OrtStatus* status = g_ort->GetAvailableProviders(&providers, &num_providers);
-  if (status != NULL) {
-    g_ort->ReleaseStatus(status);
-    return 0;
-  }
-
-  buffer[0] = '\0';
-  for (int i = 0; i < num_providers; i++) {
-    if (i > 0) strncat(buffer, ",", buffer_len - strlen(buffer) - 1);
-    strncat(buffer, providers[i], buffer_len - strlen(buffer) - 1);
-  }
-
-  g_ort->ReleaseAvailableProviders(providers, num_providers);
-  return num_providers;
-}
-
-/* Tensor */
 struct LibOnnxTensor {
-  int32_t dtype;
-  int64_t* shape;
-  int32_t rank;
-  void* data;
-  size_t byte_length;
+  int dtype, rank;
+  int64_t *shape;
+  int64_t count;
+  void *data;
+  size_t bytes;
   int owns_data;
-  OrtValue* ort_value;
+  OrtValue *value;
 };
-
-static ONNXTensorElementDataType map_lib_dtype_to_ort(int32_t dtype) {
-  switch (dtype) {
-    case LIB_ONNX_DTYPE_FLOAT32: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    case LIB_ONNX_DTYPE_FLOAT16: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    case LIB_ONNX_DTYPE_INT64:   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    case LIB_ONNX_DTYPE_INT32:   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    case LIB_ONNX_DTYPE_INT8:    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    case LIB_ONNX_DTYPE_UINT8:   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    case LIB_ONNX_DTYPE_BOOL:    return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    default:                     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  }
+void lib_onnx_tensor_destroy(LibOnnxTensorHandle t) {
+  if (!t)
+    return;
+  if (t->value)
+    ort->ReleaseValue(t->value);
+  if (t->owns_data)
+    free(t->data);
+  free(t->shape);
+  free(t);
 }
-
-static int32_t map_ort_dtype_to_lib(ONNXTensorElementDataType ort_type) {
-  switch (ort_type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   return LIB_ONNX_DTYPE_FLOAT32;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return LIB_ONNX_DTYPE_FLOAT16;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   return LIB_ONNX_DTYPE_INT64;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   return LIB_ONNX_DTYPE_INT32;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    return LIB_ONNX_DTYPE_INT8;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   return LIB_ONNX_DTYPE_UINT8;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:    return LIB_ONNX_DTYPE_BOOL;
-    default:                                    return LIB_ONNX_DTYPE_UNKNOWN;
-  }
-}
-
-LIB_ONNX_EXPORT LibOnnxTensorHandle lib_onnx_tensor_create(
-    int32_t dtype,
-    const int64_t* shape,
-    int32_t rank,
-    const void* data,
-    size_t byte_length,
-    int32_t copy_data
-) {
-  ensure_ort_initialized();
-  if (!g_ort || !shape || rank <= 0 || !data || byte_length == 0) {
-    set_last_error("Invalid arguments to lib_onnx_tensor_create");
+LibOnnxTensorHandle lib_onnx_tensor_create(int32_t dtype, const int64_t *shape,
+                                           int32_t rank, const void *data,
+                                           size_t length, int32_t copy_data) {
+  pthread_once(&ort_once, init_ort);
+  if (!ort) {
+    error(1, "runtime.init", "ORT API version unavailable");
     return NULL;
   }
-
-  ONNXTensorElementDataType ort_type = map_lib_dtype_to_ort(dtype);
-  if (ort_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-    set_last_error("Unsupported data type for tensor creation");
+  int64_t count;
+  size_t bytes;
+  if (tensor_size(dtype, shape, rank, &count, &bytes))
+    return NULL;
+  if (length != bytes || (bytes && !data)) {
+    error(2, "tensor.buffer",
+          "Buffer length must exactly match tensor shape/type");
     return NULL;
   }
-
-  struct LibOnnxTensor* t = (struct LibOnnxTensor*)calloc(1, sizeof(struct LibOnnxTensor));
-  if (!t) return NULL;
-
+  struct LibOnnxTensor *t = calloc(1, sizeof(*t));
+  if (!t) {
+    oom();
+    return NULL;
+  }
   t->dtype = dtype;
   t->rank = rank;
-  t->shape = (int64_t*)malloc(sizeof(int64_t) * rank);
-  memcpy(t->shape, shape, sizeof(int64_t) * rank);
-  t->byte_length = byte_length;
-
-  if (copy_data) {
-    t->data = malloc(byte_length);
-    memcpy(t->data, data, byte_length);
-    t->owns_data = 1;
-  } else {
-    t->data = (void*)data;
-    t->owns_data = 0;
+  t->count = count;
+  t->bytes = bytes;
+  if (rank) {
+    t->shape = malloc(sizeof(int64_t) * (size_t)rank);
+    if (!t->shape)
+      goto fail;
+    memcpy(t->shape, shape, sizeof(int64_t) * (size_t)rank);
   }
-
-  OrtMemoryInfo* mem_info = NULL;
-  OrtStatus* status = g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info);
-  if (status != NULL) {
-    check_ort_status(status);
-    if (t->owns_data) free(t->data);
-    free(t->shape);
-    free(t);
-    return NULL;
-  }
-
-  status = g_ort->CreateTensorWithDataAsOrtValue(
-      mem_info,
-      t->data,
-      t->byte_length,
-      t->shape,
-      t->rank,
-      ort_type,
-      &t->ort_value
-  );
-  g_ort->ReleaseMemoryInfo(mem_info);
-
-  if (status != NULL) {
-    check_ort_status(status);
-    if (t->owns_data) free(t->data);
-    free(t->shape);
-    free(t);
-    return NULL;
-  }
-
+  /* ORT expects a non-null backing pointer even for some zero-byte tensors. */
+  t->owns_data = copy_data || !bytes;
+  t->data = t->owns_data ? malloc(bytes ? bytes : 1) : (void *)data;
+  if (!t->data)
+    goto fail;
+  if (bytes && copy_data)
+    memcpy(t->data, data, bytes);
+  OrtMemoryInfo *mem = NULL;
+  if (status_error(
+          ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem),
+          "tensor.memory"))
+    goto fail_status;
+  OrtStatus *st = ort->CreateTensorWithDataAsOrtValue(
+      mem, t->data, bytes, t->shape, (size_t)rank, dtypes[dtype].ort_type,
+      &t->value);
+  ort->ReleaseMemoryInfo(mem);
+  if (status_error(st, "tensor.create"))
+    goto fail_status;
   return t;
-}
-
-LIB_ONNX_EXPORT void lib_onnx_tensor_destroy(LibOnnxTensorHandle tensor) {
-  if (!tensor) return;
-  if (tensor->ort_value) {
-    g_ort->ReleaseValue(tensor->ort_value);
-  }
-  if (tensor->owns_data && tensor->data) {
-    free(tensor->data);
-  }
-  if (tensor->shape) {
-    free(tensor->shape);
-  }
-  free(tensor);
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_tensor_get_dtype(LibOnnxTensorHandle tensor) {
-  return tensor ? tensor->dtype : LIB_ONNX_DTYPE_UNKNOWN;
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_tensor_get_rank(LibOnnxTensorHandle tensor) {
-  return tensor ? tensor->rank : 0;
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_tensor_get_shape(LibOnnxTensorHandle tensor, int64_t* out_shape, int32_t max_rank) {
-  if (!tensor || !out_shape) return 0;
-  int32_t count = tensor->rank < max_rank ? tensor->rank : max_rank;
-  for (int32_t i = 0; i < count; i++) {
-    out_shape[i] = tensor->shape[i];
-  }
-  return count;
-}
-
-LIB_ONNX_EXPORT const void* lib_onnx_tensor_get_data(LibOnnxTensorHandle tensor) {
-  return tensor ? tensor->data : NULL;
-}
-
-LIB_ONNX_EXPORT size_t lib_onnx_tensor_get_byte_length(LibOnnxTensorHandle tensor) {
-  return tensor ? tensor->byte_length : 0;
-}
-
-LIB_ONNX_EXPORT int64_t lib_onnx_tensor_get_element_count(LibOnnxTensorHandle tensor) {
-  if (!tensor || tensor->rank == 0) return 0;
-  int64_t count = 1;
-  for (int32_t i = 0; i < tensor->rank; i++) {
-    count *= tensor->shape[i];
-  }
-  return count;
-}
-
-/* Diagnostic Report */
-struct LibOnnxDiagnosticReport {
-  char provider[64];
-  int32_t evidence_level;
-  int64_t duration_us;
-  char hardware_details[256];
-  char model_hash[65];
-  int32_t fallback_occurred;
-};
-
-LIB_ONNX_EXPORT const char* lib_onnx_diagnostic_get_provider(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->provider : "Unknown";
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_diagnostic_get_evidence_level(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->evidence_level : LIB_ONNX_EVIDENCE_UNKNOWN;
-}
-
-LIB_ONNX_EXPORT int64_t lib_onnx_diagnostic_get_duration_us(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->duration_us : 0;
-}
-
-LIB_ONNX_EXPORT const char* lib_onnx_diagnostic_get_hardware_details(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->hardware_details : "";
-}
-
-LIB_ONNX_EXPORT const char* lib_onnx_diagnostic_get_model_hash(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->model_hash : "";
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_diagnostic_get_fallback_occurred(LibOnnxDiagnosticReportHandle report) {
-  return report ? report->fallback_occurred : 0;
-}
-
-LIB_ONNX_EXPORT void lib_onnx_diagnostic_destroy(LibOnnxDiagnosticReportHandle report) {
-  if (report) free(report);
-}
-
-/* Session */
-struct LibOnnxSession {
-  struct LibOnnxRuntime* runtime;
-  OrtSession* session;
-  char chosen_provider[64];
-  int32_t fallback_policy;
-  int32_t hardware_requirement;
-  int32_t evidence_level;
-  char hardware_details[256];
-  char model_hash[65];
-
-  // Cached input metadata
-  int32_t input_count;
-  char** input_names;
-  int32_t* input_types;
-  int64_t** input_shapes;
-  int32_t* input_ranks;
-
-  // Cached output metadata
-  int32_t output_count;
-  char** output_names;
-  int32_t* output_types;
-  int64_t** output_shapes;
-  int32_t* output_ranks;
-
-  // Active in-flight cancellation tracking
-  pthread_mutex_t run_mutex;
-  int64_t active_run_id;
-  int active_cancelled;
-  int is_closed;
-};
-
-/* Hardware check on Apple */
-static void probe_apple_hardware(char* details, size_t len, int* has_ane, int* has_gpu) {
-  *has_ane = 0;
-  *has_gpu = 0;
-#if defined(__APPLE__)
-  char cpu_brand[128] = {0};
-  size_t size = sizeof(cpu_brand);
-  if (sysctlbyname("machdep.cpu.brand_string", cpu_brand, &size, NULL, 0) == 0) {
-    snprintf(details, len, "%s", cpu_brand);
-    if (strstr(cpu_brand, "Apple M") || strstr(cpu_brand, "Apple A")) {
-      *has_ane = 1; // All Apple Silicon M/A chips have ANE
-      *has_gpu = 1;
-    }
-  } else {
-    snprintf(details, len, "Apple Hardware");
-    *has_gpu = 1;
-  }
-#else
-  snprintf(details, len, "Non-Apple Target");
-#endif
-}
-
-LIB_ONNX_EXPORT LibOnnxSessionHandle lib_onnx_session_create(
-    LibOnnxRuntimeHandle runtime,
-    const char* model_path,
-    const void* model_bytes,
-    size_t model_bytes_len,
-    const char** providers,
-    int32_t num_providers,
-    const char** option_keys,
-    const char** option_values,
-    int32_t num_options,
-    int32_t thread_count,
-    int32_t fallback_policy,
-    int32_t hardware_requirement
-) {
-  ensure_ort_initialized();
-  if (!runtime || (!model_path && !model_bytes)) {
-    set_last_error("Invalid session creation parameters");
-    return NULL;
-  }
-
-  OrtSessionOptions* session_options = NULL;
-  OrtStatus* status = g_ort->CreateSessionOptions(&session_options);
-  if (status != NULL) {
-    check_ort_status(status);
-    return NULL;
-  }
-
-  if (thread_count > 0) {
-    g_ort->SetIntraOpNumThreads(session_options, thread_count);
-  }
-
-  struct LibOnnxSession* s = (struct LibOnnxSession*)calloc(1, sizeof(struct LibOnnxSession));
-  if (!s) {
-    g_ort->ReleaseSessionOptions(session_options);
-    return NULL;
-  }
-
-  s->runtime = runtime;
-  s->fallback_policy = fallback_policy;
-  s->hardware_requirement = hardware_requirement;
-  pthread_mutex_init(&s->run_mutex, NULL);
-
-  int has_ane = 0, has_gpu = 0;
-  probe_apple_hardware(s->hardware_details, sizeof(s->hardware_details), &has_ane, &has_gpu);
-
-  // Configure Providers
-  strcpy(s->chosen_provider, "CPU");
-  s->evidence_level = LIB_ONNX_EVIDENCE_NONE;
-
-  int accelerator_requested = 0;
-  int accelerator_configured = 0;
-
-  for (int p = 0; p < num_providers; p++) {
-    const char* prov = providers[p];
-    if (strcasecmp(prov, "CPU") != 0) {
-      accelerator_requested = 1;
-    }
-    if (strcasecmp(prov, "CoreML") == 0) {
-      uint32_t coreml_flags = COREML_FLAG_ENABLE_ON_SUBGRAPH | COREML_FLAG_CREATE_MLPROGRAM;
-
-      // Parse custom CoreML options
-      for (int o = 0; o < num_options; o++) {
-        if (strcmp(option_keys[o], "coreml.MLComputeUnits") == 0) {
-          if (strcasecmp(option_values[o], "CPUAndGPU") == 0) {
-            coreml_flags |= COREML_FLAG_USE_CPU_AND_GPU;
-          } else if (strcasecmp(option_values[o], "CPUOnly") == 0) {
-            coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
-          }
-        } else if (strcmp(option_keys[o], "coreml.RequireANE") == 0) {
-          if (strcmp(option_values[o], "1") == 0) {
-            coreml_flags |= COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
-          }
-        }
-      }
-
-      OrtStatus* c_status = OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags);
-      if (c_status == NULL) {
-        strcpy(s->chosen_provider, "CoreML");
-        s->evidence_level = LIB_ONNX_EVIDENCE_EP_COMPILED;
-        accelerator_configured = 1;
-        break; // Provider configured
-      } else {
-        g_ort->ReleaseStatus(c_status);
-        if (fallback_policy == LIB_ONNX_FALLBACK_STRICT) {
-          set_last_error("CoreML execution provider failed to initialize under strict fallback policy");
-          g_ort->ReleaseSessionOptions(session_options);
-          pthread_mutex_destroy(&s->run_mutex);
-          free(s);
-          return NULL;
-        }
-      }
-    } else if (strcasecmp(prov, "QNN") == 0) {
-      accelerator_requested = 1;
-      // QNN provider option keys/values
-      const char* qnn_keys[8];
-      const char* qnn_vals[8];
-      int qnn_opt_count = 0;
-      for (int o = 0; o < num_options; o++) {
-        if (strncmp(option_keys[o], "qnn.", 4) == 0 && qnn_opt_count < 8) {
-          qnn_keys[qnn_opt_count] = option_keys[o] + 4;
-          qnn_vals[qnn_opt_count] = option_values[o];
-          qnn_opt_count++;
-        }
-      }
-      OrtStatus* q_status = g_ort->SessionOptionsAppendExecutionProvider(
-          session_options, "QNN", qnn_keys, qnn_vals, qnn_opt_count
-      );
-      if (q_status == NULL) {
-        strcpy(s->chosen_provider, "QNN");
-        s->evidence_level = LIB_ONNX_EVIDENCE_EP_COMPILED;
-        accelerator_configured = 1;
-        break;
-      } else {
-        g_ort->ReleaseStatus(q_status);
-        if (fallback_policy == LIB_ONNX_FALLBACK_STRICT) {
-          set_last_error("QNN execution provider failed to initialize under strict fallback policy");
-          g_ort->ReleaseSessionOptions(session_options);
-          pthread_mutex_destroy(&s->run_mutex);
-          free(s);
-          return NULL;
-        }
-      }
-    }
-  }
-
-  if (accelerator_requested && !accelerator_configured && fallback_policy == LIB_ONNX_FALLBACK_STRICT) {
-    set_last_error("Requested accelerator could not be configured under strict fallback policy");
-    g_ort->ReleaseSessionOptions(session_options);
-    pthread_mutex_destroy(&s->run_mutex);
-    free(s);
-    return NULL;
-  }
-
-  // Check hardware requirement
-  if (hardware_requirement == LIB_ONNX_HARDWARE_NPU && !has_ane && accelerator_configured) {
-    if (fallback_policy == LIB_ONNX_FALLBACK_STRICT) {
-      set_last_error("Strict NPU/ANE hardware requirement requested but device has no verified NPU");
-      g_ort->ReleaseSessionOptions(session_options);
-      pthread_mutex_destroy(&s->run_mutex);
-      free(s);
-      return NULL;
-    }
-    s->evidence_level = LIB_ONNX_EVIDENCE_UNVERIFIABLE;
-  }
-
-  // Create OrtSession
-  if (model_path != NULL) {
-    status = g_ort->CreateSession(runtime->env, model_path, session_options, &s->session);
-  } else {
-    status = g_ort->CreateSessionFromArray(runtime->env, model_bytes, model_bytes_len, session_options, &s->session);
-  }
-  g_ort->ReleaseSessionOptions(session_options);
-
-  if (status != NULL) {
-    check_ort_status(status);
-    pthread_mutex_destroy(&s->run_mutex);
-    free(s);
-    return NULL;
-  }
-
-  // Model graph compilation succeeded on EP
-  if (accelerator_configured) {
-    s->evidence_level = has_ane ? LIB_ONNX_EVIDENCE_HARDWARE_OBSERVED : LIB_ONNX_EVIDENCE_GRAPH_PARTITIONED;
-  }
-
-  // Query metadata: inputs
-  OrtAllocator* allocator = NULL;
-  g_ort->GetAllocatorWithDefaultOptions(&allocator);
-
-  size_t in_count = 0;
-  g_ort->SessionGetInputCount(s->session, &in_count);
-  s->input_count = (int32_t)in_count;
-  s->input_names = (char**)calloc(s->input_count, sizeof(char*));
-  s->input_types = (int32_t*)calloc(s->input_count, sizeof(int32_t));
-  s->input_shapes = (int64_t**)calloc(s->input_count, sizeof(int64_t*));
-  s->input_ranks = (int32_t*)calloc(s->input_count, sizeof(int32_t));
-
-  for (int32_t i = 0; i < s->input_count; i++) {
-    char* name = NULL;
-    g_ort->SessionGetInputName(s->session, i, allocator, &name);
-    s->input_names[i] = strdup(name);
-    allocator->Free(allocator, name);
-
-    OrtTypeInfo* type_info = NULL;
-    g_ort->SessionGetInputTypeInfo(s->session, i, &type_info);
-    const OrtTensorTypeAndShapeInfo* shape_info = NULL;
-    g_ort->CastTypeInfoToTensorInfo(type_info, &shape_info);
-
-    ONNXTensorElementDataType dt = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    g_ort->GetTensorElementType(shape_info, &dt);
-    s->input_types[i] = map_ort_dtype_to_lib(dt);
-
-    size_t dim_count = 0;
-    g_ort->GetDimensionsCount(shape_info, &dim_count);
-    s->input_ranks[i] = (int32_t)dim_count;
-    s->input_shapes[i] = (int64_t*)malloc(sizeof(int64_t) * dim_count);
-    g_ort->GetDimensions(shape_info, s->input_shapes[i], dim_count);
-
-    g_ort->ReleaseTypeInfo(type_info);
-  }
-
-  // Query metadata: outputs
-  size_t out_count = 0;
-  g_ort->SessionGetOutputCount(s->session, &out_count);
-  s->output_count = (int32_t)out_count;
-  s->output_names = (char**)calloc(s->output_count, sizeof(char*));
-  s->output_types = (int32_t*)calloc(s->output_count, sizeof(int32_t));
-  s->output_shapes = (int64_t**)calloc(s->output_count, sizeof(int64_t*));
-  s->output_ranks = (int32_t*)calloc(s->output_count, sizeof(int32_t));
-
-  for (int32_t i = 0; i < s->output_count; i++) {
-    char* name = NULL;
-    g_ort->SessionGetOutputName(s->session, i, allocator, &name);
-    s->output_names[i] = strdup(name);
-    allocator->Free(allocator, name);
-
-    OrtTypeInfo* type_info = NULL;
-    g_ort->SessionGetOutputTypeInfo(s->session, i, &type_info);
-    const OrtTensorTypeAndShapeInfo* shape_info = NULL;
-    g_ort->CastTypeInfoToTensorInfo(type_info, &shape_info);
-
-    ONNXTensorElementDataType dt = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    g_ort->GetTensorElementType(shape_info, &dt);
-    s->output_types[i] = map_ort_dtype_to_lib(dt);
-
-    size_t dim_count = 0;
-    g_ort->GetDimensionsCount(shape_info, &dim_count);
-    s->output_ranks[i] = (int32_t)dim_count;
-    s->output_shapes[i] = (int64_t*)malloc(sizeof(int64_t) * dim_count);
-    g_ort->GetDimensions(shape_info, s->output_shapes[i], dim_count);
-
-    g_ort->ReleaseTypeInfo(type_info);
-  }
-
-  return s;
-}
-
-LIB_ONNX_EXPORT void lib_onnx_session_destroy(LibOnnxSessionHandle session) {
-  if (!session) return;
-
-  pthread_mutex_lock(&session->run_mutex);
-  session->is_closed = 1;
-  session->active_cancelled = 1;
-  pthread_mutex_unlock(&session->run_mutex);
-
-  // Free inputs
-  for (int32_t i = 0; i < session->input_count; i++) {
-    free(session->input_names[i]);
-    free(session->input_shapes[i]);
-  }
-  free(session->input_names);
-  free(session->input_types);
-  free(session->input_shapes);
-  free(session->input_ranks);
-
-  // Free outputs
-  for (int32_t i = 0; i < session->output_count; i++) {
-    free(session->output_names[i]);
-    free(session->output_shapes[i]);
-  }
-  free(session->output_names);
-  free(session->output_types);
-  free(session->output_shapes);
-  free(session->output_ranks);
-
-  if (session->session) {
-    g_ort->ReleaseSession(session->session);
-  }
-
-  pthread_mutex_destroy(&session->run_mutex);
-  free(session);
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_input_count(LibOnnxSessionHandle session) {
-  return session ? session->input_count : 0;
-}
-
-LIB_ONNX_EXPORT const char* lib_onnx_session_get_input_name(LibOnnxSessionHandle session, int32_t index) {
-  if (!session || index < 0 || index >= session->input_count) return NULL;
-  return session->input_names[index];
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_input_type(LibOnnxSessionHandle session, int32_t index) {
-  if (!session || index < 0 || index >= session->input_count) return LIB_ONNX_DTYPE_UNKNOWN;
-  return session->input_types[index];
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_input_shape(LibOnnxSessionHandle session, int32_t index, int64_t* out_shape, int32_t max_rank) {
-  if (!session || index < 0 || index >= session->input_count || !out_shape) return 0;
-  int32_t count = session->input_ranks[index] < max_rank ? session->input_ranks[index] : max_rank;
-  for (int32_t i = 0; i < count; i++) {
-    out_shape[i] = session->input_shapes[index][i];
-  }
-  return count;
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_output_count(LibOnnxSessionHandle session) {
-  return session ? session->output_count : 0;
-}
-
-LIB_ONNX_EXPORT const char* lib_onnx_session_get_output_name(LibOnnxSessionHandle session, int32_t index) {
-  if (!session || index < 0 || index >= session->output_count) return NULL;
-  return session->output_names[index];
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_output_type(LibOnnxSessionHandle session, int32_t index) {
-  if (!session || index < 0 || index >= session->output_count) return LIB_ONNX_DTYPE_UNKNOWN;
-  return session->output_types[index];
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_get_output_shape(LibOnnxSessionHandle session, int32_t index, int64_t* out_shape, int32_t max_rank) {
-  if (!session || index < 0 || index >= session->output_count || !out_shape) return 0;
-  int32_t count = session->output_ranks[index] < max_rank ? session->output_ranks[index] : max_rank;
-  for (int32_t i = 0; i < count; i++) {
-    out_shape[i] = session->output_shapes[index][i];
-  }
-  return count;
-}
-
-/* Run execution */
-static int64_t get_current_time_us(void) {
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return ((int64_t)tv.tv_sec * 1000000LL) + tv.tv_usec;
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_run_sync(
-    LibOnnxSessionHandle session,
-    int64_t run_id,
-    const char** input_names,
-    LibOnnxTensorHandle* input_tensors,
-    int32_t num_inputs,
-    const char** output_names,
-    LibOnnxTensorHandle* out_output_tensors,
-    int32_t num_outputs,
-    LibOnnxDiagnosticReportHandle* out_diagnostic
-) {
-  if (!session || session->is_closed) {
-    set_last_error("Session is null or closed");
-    return LIB_ONNX_ERR_CLOSED;
-  }
-
-  pthread_mutex_lock(&session->run_mutex);
-  session->active_run_id = run_id;
-  session->active_cancelled = 0;
-  pthread_mutex_unlock(&session->run_mutex);
-
-  // Prepare input OrtValues
-  const OrtValue** in_values = (const OrtValue**)malloc(sizeof(OrtValue*) * num_inputs);
-  for (int32_t i = 0; i < num_inputs; i++) {
-    in_values[i] = input_tensors[i]->ort_value;
-  }
-
-  OrtValue** out_values = (OrtValue**)calloc(num_outputs, sizeof(OrtValue*));
-
-  OrtRunOptions* run_opts = NULL;
-  g_ort->CreateRunOptions(&run_opts);
-
-  int64_t start_time = get_current_time_us();
-
-  OrtStatus* status = g_ort->Run(
-      session->session,
-      run_opts,
-      input_names,
-      in_values,
-      num_inputs,
-      output_names,
-      num_outputs,
-      out_values
-  );
-
-  int64_t duration = get_current_time_us() - start_time;
-  g_ort->ReleaseRunOptions(run_opts);
-  free(in_values);
-
-  pthread_mutex_lock(&session->run_mutex);
-  int was_cancelled = session->active_cancelled;
-  session->active_run_id = 0;
-  pthread_mutex_unlock(&session->run_mutex);
-
-  if (was_cancelled) {
-    for (int32_t i = 0; i < num_outputs; i++) {
-      if (out_values[i]) g_ort->ReleaseValue(out_values[i]);
-    }
-    free(out_values);
-    if (status) g_ort->ReleaseStatus(status);
-    set_last_error("Execution was cancelled");
-    return LIB_ONNX_ERR_CANCELLED;
-  }
-
-  if (status != NULL) {
-    for (int32_t i = 0; i < num_outputs; i++) {
-      if (out_values[i]) g_ort->ReleaseValue(out_values[i]);
-    }
-    free(out_values);
-    check_ort_status(status);
-    return LIB_ONNX_ERR_GENERIC;
-  }
-
-  // Wrap output values into LibOnnxTensor
-  for (int32_t i = 0; i < num_outputs; i++) {
-    struct LibOnnxTensor* t = (struct LibOnnxTensor*)calloc(1, sizeof(struct LibOnnxTensor));
-    t->ort_value = out_values[i];
-
-    OrtTensorTypeAndShapeInfo* shape_info = NULL;
-    g_ort->GetTensorTypeAndShape(out_values[i], &shape_info);
-
-    ONNXTensorElementDataType dt = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    g_ort->GetTensorElementType(shape_info, &dt);
-    t->dtype = map_ort_dtype_to_lib(dt);
-
-    size_t dim_count = 0;
-    g_ort->GetDimensionsCount(shape_info, &dim_count);
-    t->rank = (int32_t)dim_count;
-    t->shape = (int64_t*)malloc(sizeof(int64_t) * dim_count);
-    g_ort->GetDimensions(shape_info, t->shape, dim_count);
-
-    size_t elem_count = 0;
-    g_ort->GetTensorShapeElementCount(shape_info, &elem_count);
-
-    g_ort->GetTensorMutableData(out_values[i], &t->data);
-    t->owns_data = 0; // Managed by OrtValue
-    t->byte_length = elem_count * (t->dtype == LIB_ONNX_DTYPE_INT64 ? 8 : (t->dtype == LIB_ONNX_DTYPE_FLOAT16 ? 2 : 4));
-
-    g_ort->ReleaseTensorTypeAndShapeInfo(shape_info);
-    out_output_tensors[i] = t;
-  }
-  free(out_values);
-
-  // Diagnostic Report
-  if (out_diagnostic != NULL) {
-    struct LibOnnxDiagnosticReport* report = (struct LibOnnxDiagnosticReport*)calloc(1, sizeof(struct LibOnnxDiagnosticReport));
-    strncpy(report->provider, session->chosen_provider, sizeof(report->provider) - 1);
-    report->evidence_level = session->evidence_level;
-    report->duration_us = duration;
-    strncpy(report->hardware_details, session->hardware_details, sizeof(report->hardware_details) - 1);
-    strncpy(report->model_hash, session->model_hash, sizeof(report->model_hash) - 1);
-    report->fallback_occurred = (session->evidence_level == LIB_ONNX_EVIDENCE_NONE) ? 1 : 0;
-    *out_diagnostic = report;
-  }
-
-  return LIB_ONNX_OK;
-}
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_cancel_run(LibOnnxSessionHandle session, int64_t run_id) {
-  if (!session) return LIB_ONNX_ERR_INVALID_ARGUMENT;
-
-  pthread_mutex_lock(&session->run_mutex);
-  if (session->active_run_id == run_id) {
-    session->active_cancelled = 1;
-  }
-  pthread_mutex_unlock(&session->run_mutex);
-
-  // Also check queued tasks in runtime
-  struct LibOnnxRuntime* rt = session->runtime;
-  if (rt) {
-    pthread_mutex_lock(&rt->queue_mutex);
-    AsyncTask* curr = rt->task_queue_head;
-    while (curr) {
-      if (curr->run_id == run_id) {
-        curr->is_cancelled = 1;
-        break;
-      }
-      curr = curr->next;
-    }
-    pthread_mutex_unlock(&rt->queue_mutex);
-  }
-
-  return LIB_ONNX_OK;
-}
-
-/* Worker loop executing async tasks */
-static void* worker_thread_loop(void* arg) {
-  struct LibOnnxRuntime* rt = (struct LibOnnxRuntime*)arg;
-
-  while (1) {
-    pthread_mutex_lock(&rt->queue_mutex);
-    while (rt->task_queue_head == NULL && !rt->is_shutting_down) {
-      pthread_cond_wait(&rt->queue_cond, &rt->queue_mutex);
-    }
-
-    if (rt->is_shutting_down && rt->task_queue_head == NULL) {
-      pthread_mutex_unlock(&rt->queue_mutex);
-      break;
-    }
-
-    AsyncTask* task = rt->task_queue_head;
-    if (task) {
-      rt->task_queue_head = task->next;
-      if (rt->task_queue_head == NULL) rt->task_queue_tail = NULL;
-      rt->task_queue_size--;
-    }
-    pthread_mutex_unlock(&rt->queue_mutex);
-
-    if (!task) continue;
-
-    if (task->is_cancelled) {
-      if (task->callback) {
-        task->callback(task->run_id, LIB_ONNX_ERR_CANCELLED, "Task cancelled in queue", NULL, 0, NULL, task->user_data);
-      }
-    } else {
-      LibOnnxTensorHandle* outputs = (LibOnnxTensorHandle*)calloc(task->num_outputs, sizeof(LibOnnxTensorHandle));
-      LibOnnxDiagnosticReportHandle diag = NULL;
-
-      int32_t res = lib_onnx_session_run_sync(
-          task->session,
-          task->run_id,
-          (const char**)task->input_names,
-          task->input_tensors,
-          task->num_inputs,
-          (const char**)task->output_names,
-          outputs,
-          task->num_outputs,
-          &diag
-      );
-
-      if (task->callback) {
-        task->callback(
-            task->run_id,
-            res,
-            res == LIB_ONNX_OK ? NULL : lib_onnx_get_last_error(),
-            outputs,
-            task->num_outputs,
-            diag,
-            task->user_data
-        );
-      } else {
-        for (int i = 0; i < task->num_outputs; i++) {
-          if (outputs[i]) lib_onnx_tensor_destroy(outputs[i]);
-        }
-        if (diag) lib_onnx_diagnostic_destroy(diag);
-      }
-      free(outputs);
-    }
-
-    for (int i = 0; i < task->num_inputs; i++) free(task->input_names[i]);
-    free(task->input_names);
-    free(task->input_tensors);
-    for (int i = 0; i < task->num_outputs; i++) free(task->output_names[i]);
-    free(task->output_names);
-    free(task);
-  }
-
+fail:
+  oom();
+fail_status:
+  lib_onnx_tensor_destroy(t);
   return NULL;
 }
-
-LIB_ONNX_EXPORT int32_t lib_onnx_session_run_async(
-    LibOnnxSessionHandle session,
-    int64_t run_id,
-    const char** input_names,
-    LibOnnxTensorHandle* input_tensors,
-    int32_t num_inputs,
-    const char** output_names,
-    int32_t num_outputs,
-    int64_t timeout_ms,
-    LibOnnxCompletionCallback callback,
-    void* user_data
-) {
-  if (!session || session->is_closed || !session->runtime) {
-    set_last_error("Session is closed or invalid");
-    return LIB_ONNX_ERR_CLOSED;
+int32_t lib_onnx_tensor_get_dtype(LibOnnxTensorHandle t) {
+  return t ? t->dtype : 0;
+}
+int32_t lib_onnx_tensor_get_rank(LibOnnxTensorHandle t) {
+  return t ? t->rank : -1;
+}
+int32_t lib_onnx_tensor_get_shape(LibOnnxTensorHandle t, int64_t *dst,
+                                  int32_t capacity) {
+  if (!t)
+    return -1;
+  if (!dst)
+    return t->rank;
+  if (capacity < t->rank) {
+    error(2, "tensor.shape", "Shape buffer too short");
+    return -1;
   }
+  if (t->rank)
+    memcpy(dst, t->shape, (size_t)t->rank * sizeof(int64_t));
+  return t->rank;
+}
+const void *lib_onnx_tensor_get_data(LibOnnxTensorHandle t) {
+  return t ? t->data : NULL;
+}
+size_t lib_onnx_tensor_get_byte_length(LibOnnxTensorHandle t) {
+  return t ? t->bytes : 0;
+}
+int64_t lib_onnx_tensor_get_element_count(LibOnnxTensorHandle t) {
+  return t ? t->count : -1;
+}
 
-  struct LibOnnxRuntime* rt = session->runtime;
-  pthread_mutex_lock(&rt->queue_mutex);
+struct LibOnnxDiagnosticReport {
+  char provider[16], registered[128], details[2304];
+  int evidence, fallback;
+  int64_t duration;
+};
+const char *lib_onnx_diagnostic_get_provider(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->provider : "";
+}
+const char *
+lib_onnx_diagnostic_get_registered_providers(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->registered : "";
+}
+int32_t
+lib_onnx_diagnostic_get_evidence_level(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->evidence : 0;
+}
+int64_t lib_onnx_diagnostic_get_duration_us(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->duration : 0;
+}
+const char *
+lib_onnx_diagnostic_get_hardware_details(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->details : "";
+}
+const char *
+lib_onnx_diagnostic_get_model_hash(LibOnnxDiagnosticReportHandle d) {
+  (void)d;
+  return "";
+}
+int32_t
+lib_onnx_diagnostic_get_fallback_occurred(LibOnnxDiagnosticReportHandle d) {
+  return d ? d->fallback : -1;
+}
+void lib_onnx_diagnostic_destroy(LibOnnxDiagnosticReportHandle d) { free(d); }
 
-  if (rt->is_shutting_down) {
-    pthread_mutex_unlock(&rt->queue_mutex);
-    set_last_error("Runtime is shutting down");
-    return LIB_ONNX_ERR_CLOSED;
+typedef struct {
+  int count;
+  char **names;
+  int *types;
+  int *ranks;
+  int64_t **shapes;
+} Metadata;
+struct LibOnnxRuntime {
+  atomic_int refs;
+  OrtEnv *env;
+  pthread_mutex_t mu;
+  pthread_cond_t cv;
+  pthread_t *workers;
+  pthread_t monitor;
+  int nworkers, monitor_started, closing, pending;
+  struct LibOnnxTask *head, *tail, *live;
+};
+struct LibOnnxSession {
+  atomic_int refs;
+  struct LibOnnxRuntime *rt;
+  OrtSession *value;
+  Metadata inputs, outputs;
+  int closing, queued, active, pending, max_queue, max_active;
+  int cpu_only, accelerators_requested, fallback;
+  char registered[128], initialization[2048];
+};
+struct LibOnnxTask {
+  atomic_int refs;
+  struct LibOnnxSession *s;
+  struct LibOnnxTask *next, *live_next;
+  int64_t id, request_id, deadline, started;
+  int state, cancel_code, cancel_ort_code, status;
+  Error failure;
+  OrtRunOptions *options;
+  int ni, no;
+  char **in_names, **out_names;
+  LibOnnxTensorHandle *inputs, *outputs;
+  LibOnnxDiagnosticReportHandle diagnostic;
+#ifdef LIB_ONNX_TESTING
+  int at_barrier, in_run;
+#endif
+};
+static void runtime_release(struct LibOnnxRuntime *rt) {
+  if (atomic_fetch_sub(&rt->refs, 1) != 1)
+    return;
+  ort->ReleaseEnv(rt->env);
+  free(rt->workers);
+  pthread_mutex_destroy(&rt->mu);
+  pthread_cond_destroy(&rt->cv);
+  free(rt);
+}
+static void free_metadata(Metadata *m) {
+  for (int i = 0; i < m->count; i++) {
+    if (m->names)
+      free(m->names[i]);
+    if (m->shapes)
+      free(m->shapes[i]);
   }
-
-  // Bounded queue limit (e.g. 64)
-  if (rt->task_queue_size >= 64) {
-    pthread_mutex_unlock(&rt->queue_mutex);
-    set_last_error("Session task queue is full (queue overflow)");
-    return LIB_ONNX_ERR_QUEUE_OVERFLOW;
+  free(m->names);
+  free(m->types);
+  free(m->ranks);
+  free(m->shapes);
+}
+static void session_release(struct LibOnnxSession *s) {
+  if (atomic_fetch_sub(&s->refs, 1) != 1)
+    return;
+  free_metadata(&s->inputs);
+  free_metadata(&s->outputs);
+  if (s->value)
+    ort->ReleaseSession(s->value);
+  runtime_release(s->rt);
+  free(s);
+}
+void lib_onnx_task_release(LibOnnxTaskHandle t) {
+  if (!t || atomic_fetch_sub(&t->refs, 1) != 1)
+    return;
+  for (int i = 0; i < t->ni; i++) {
+    if (t->in_names)
+      free(t->in_names[i]);
+    if (t->inputs)
+      lib_onnx_tensor_destroy(t->inputs[i]);
   }
-
-  AsyncTask* task = (AsyncTask*)calloc(1, sizeof(AsyncTask));
-  task->run_id = run_id;
-  task->session = session;
-  task->num_inputs = num_inputs;
-  task->input_names = (char**)malloc(sizeof(char*) * num_inputs);
-  task->input_tensors = (LibOnnxTensorHandle*)malloc(sizeof(LibOnnxTensorHandle) * num_inputs);
-  for (int i = 0; i < num_inputs; i++) {
-    task->input_names[i] = strdup(input_names[i]);
-    task->input_tensors[i] = input_tensors[i];
+  for (int i = 0; i < t->no; i++) {
+    if (t->out_names)
+      free(t->out_names[i]);
+    if (t->outputs)
+      lib_onnx_tensor_destroy(t->outputs[i]);
   }
-
-  task->num_outputs = num_outputs;
-  task->output_names = (char**)malloc(sizeof(char*) * num_outputs);
-  for (int i = 0; i < num_outputs; i++) {
-    task->output_names[i] = strdup(output_names[i]);
+  free(t->in_names);
+  free(t->out_names);
+  free(t->inputs);
+  free(t->outputs);
+  if (t->options)
+    ort->ReleaseRunOptions(t->options);
+  free(t->diagnostic);
+  session_release(t->s);
+  free(t);
+}
+static void cancel_locked(struct LibOnnxTask *t, int code) {
+  if (t->state == 2 || t->cancel_code)
+    return;
+  t->cancel_code = code;
+  /* Every accepted task has its own RunOptions, including the dequeue gap. */
+  OrtStatus *st = ort->RunOptionsSetTerminate(t->options);
+  if (st) { /* Cancellation remains requested, never pretend hardware stopped.
+             */
+    t->cancel_ort_code = ort->GetErrorCode(st);
+    ort->ReleaseStatus(st);
   }
+}
+void lib_onnx_runtime_begin_close(LibOnnxRuntimeHandle rt) {
+  if (!rt)
+    return;
+  pthread_mutex_lock(&rt->mu);
+  rt->closing = 1;
+  for (struct LibOnnxTask *t = rt->live; t; t = t->live_next)
+    cancel_locked(t, LIB_ONNX_ERR_CLOSED);
+  pthread_cond_broadcast(&rt->cv);
+  pthread_mutex_unlock(&rt->mu);
+}
+void lib_onnx_session_begin_close(LibOnnxSessionHandle s) {
+  if (!s)
+    return;
+  pthread_mutex_lock(&s->rt->mu);
+  s->closing = 1;
+  for (struct LibOnnxTask *t = s->rt->live; t; t = t->live_next)
+    if (t->s == s)
+      cancel_locked(t, LIB_ONNX_ERR_CLOSED);
+  pthread_cond_broadcast(&s->rt->cv);
+  pthread_mutex_unlock(&s->rt->mu);
+}
+void lib_onnx_session_destroy(LibOnnxSessionHandle s) {
+  if (!s)
+    return;
+  lib_onnx_session_begin_close(s);
+  pthread_mutex_lock(&s->rt->mu);
+  while (s->pending)
+    pthread_cond_wait(&s->rt->cv, &s->rt->mu);
+  pthread_mutex_unlock(&s->rt->mu);
+  session_release(s);
+}
+static void *worker_loop(void *arg);
+static void *monitor_loop(void *arg);
+LibOnnxRuntimeHandle lib_onnx_runtime_create(int32_t concurrency) {
+  pthread_once(&ort_once, init_ort);
+  if (!ort) {
+    error(1, "runtime.init", "ORT API unavailable");
+    return NULL;
+  }
+  if (concurrency < 1 || concurrency > 64) {
+    error(2, "runtime.init", "maxConcurrency must be 1..64");
+    return NULL;
+  }
+  struct LibOnnxRuntime *rt = calloc(1, sizeof(*rt));
+  if (!rt) {
+    oom();
+    return NULL;
+  }
+  atomic_init(&rt->refs, 1);
+  if (pthread_mutex_init(&rt->mu, NULL)) {
+    free(rt);
+    error(1, "runtime.init", "Mutex initialization failed");
+    return NULL;
+  }
+  if (pthread_cond_init(&rt->cv, NULL)) {
+    pthread_mutex_destroy(&rt->mu);
+    free(rt);
+    error(1, "runtime.init", "Condition initialization failed");
+    return NULL;
+  }
+  if (status_error(
+          ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "lib_onnx", &rt->env),
+          "runtime.init"))
+    goto fail;
+  rt->workers = calloc((size_t)concurrency, sizeof(pthread_t));
+  if (!rt->workers) {
+    oom();
+    goto fail;
+  }
+  for (int i = 0; i < concurrency; i++) {
+    if (pthread_create(&rt->workers[i], NULL, worker_loop, rt)) {
+      error(1, "runtime.thread", "Worker creation failed");
+      goto fail;
+    }
+    rt->nworkers++;
+  }
+  if (pthread_create(&rt->monitor, NULL, monitor_loop, rt)) {
+    error(1, "runtime.thread", "Deadline monitor creation failed");
+    goto fail;
+  }
+  rt->monitor_started = 1;
+  return rt;
+fail:
+  lib_onnx_runtime_begin_close(rt);
+  for (int i = 0; i < rt->nworkers; i++)
+    pthread_join(rt->workers[i], NULL);
+  if (rt->env)
+    ort->ReleaseEnv(rt->env);
+  free(rt->workers);
+  pthread_cond_destroy(&rt->cv);
+  pthread_mutex_destroy(&rt->mu);
+  free(rt);
+  return NULL;
+}
+void lib_onnx_runtime_destroy(LibOnnxRuntimeHandle rt) {
+  if (!rt)
+    return;
+  lib_onnx_runtime_begin_close(rt);
+  for (int i = 0; i < rt->nworkers; i++)
+    pthread_join(rt->workers[i], NULL);
+  if (rt->monitor_started)
+    pthread_join(rt->monitor, NULL);
+  runtime_release(rt);
+}
+int32_t lib_onnx_runtime_is_provider_supported(LibOnnxRuntimeHandle rt,
+                                               const char *name) {
+  (void)rt;
+  pthread_once(&ort_once, init_ort);
+  if (!ort || !name)
+    return 0;
+  char **providers = NULL;
+  int n = 0;
+  if (status_error(ort->GetAvailableProviders(&providers, &n),
+                   "provider.available"))
+    return -1;
+  char full[96];
+  snprintf(full, sizeof(full), "%sExecutionProvider", name);
+  int found = 0;
+  for (int i = 0; i < n; i++)
+    if (!strcasecmp(name, providers[i]) || !strcasecmp(full, providers[i]))
+      found = 1;
+  if (status_error(ort->ReleaseAvailableProviders(providers, n),
+                   "provider.release"))
+    return -1;
+  return found;
+}
+int32_t lib_onnx_runtime_get_available_providers(LibOnnxRuntimeHandle rt,
+                                                 char *buf, size_t cap) {
+  (void)rt;
+  if (!buf || !cap)
+    return -1;
+  buf[0] = 0;
+  char **names = NULL;
+  int n = 0;
+  if (status_error(ort->GetAvailableProviders(&names, &n),
+                   "provider.available"))
+    return -1;
+  size_t needed = 1;
+  for (int i = 0; i < n; i++)
+    needed += strlen(names[i]) + (i ? 1 : 0);
+  if (needed > cap) {
+    status_error(ort->ReleaseAvailableProviders(names, n), "provider.release");
+    error(2, "provider.available", "Provider buffer too short");
+    return -1;
+  }
+  for (int i = 0; i < n; i++) {
+    if (i)
+      strcat(buf, ",");
+    strcat(buf, names[i]);
+  }
+  if (status_error(ort->ReleaseAvailableProviders(names, n),
+                   "provider.release"))
+    return -1;
+  return n;
+}
+static int metadata(OrtSession *session, int output, Metadata *m) {
+  size_t count = 0;
+  OrtAllocator *a = NULL;
+  if (status_error(output ? ort->SessionGetOutputCount(session, &count)
+                          : ort->SessionGetInputCount(session, &count),
+                   "metadata.count"))
+    return 1;
+  if (count > INT32_MAX) {
+    error(2, "metadata.count", "Too many model inputs/outputs");
+    return 1;
+  }
+  m->count = (int)count;
+  m->names = calloc(count ? count : 1, sizeof(char *));
+  m->types = calloc(count ? count : 1, sizeof(int));
+  m->ranks = calloc(count ? count : 1, sizeof(int));
+  m->shapes = calloc(count ? count : 1, sizeof(int64_t *));
+  if (!m->names || !m->types || !m->ranks || !m->shapes)
+    return oom();
+  if (status_error(ort->GetAllocatorWithDefaultOptions(&a),
+                   "metadata.allocator"))
+    return 1;
+  for (int i = 0; i < m->count; i++) {
+    OrtTypeInfo *info = NULL;
+    char *name = NULL;
+    if (status_error(output ? ort->SessionGetOutputName(session, i, a, &name)
+                            : ort->SessionGetInputName(session, i, a, &name),
+                     "metadata.name"))
+      return 1;
+    m->names[i] = strdup(name);
+    a->Free(a, name);
+    if (!m->names[i])
+      return oom();
+    if (status_error(output ? ort->SessionGetOutputTypeInfo(session, i, &info)
+                            : ort->SessionGetInputTypeInfo(session, i, &info),
+                     "metadata.type"))
+      return 1;
+    ONNXType kind = ONNX_TYPE_UNKNOWN;
+    const OrtTensorTypeAndShapeInfo *shape = NULL;
+    if (status_error(ort->GetOnnxTypeFromTypeInfo(info, &kind),
+                     "metadata.type"))
+      goto item_fail;
+    if (kind != ONNX_TYPE_TENSOR) {
+      m->ranks[i] = -1;
+      ort->ReleaseTypeInfo(info);
+      continue;
+    }
+    if (status_error(ort->CastTypeInfoToTensorInfo(info, &shape),
+                     "metadata.tensor"))
+      goto item_fail;
+    ONNXTensorElementDataType dt;
+    size_t rank = 0;
+    if (status_error(ort->GetTensorElementType(shape, &dt), "metadata.dtype"))
+      goto item_fail;
+    m->types[i] = dtype_from_ort(dt);
+    if (status_error(ort->GetDimensionsCount(shape, &rank), "metadata.rank"))
+      goto item_fail;
+    if (rank > INT32_MAX || rank > SIZE_MAX / sizeof(int64_t)) {
+      error(2, "metadata.rank", "Rank overflow");
+      goto item_fail;
+    }
+    m->ranks[i] = (int)rank;
+    if (rank) {
+      m->shapes[i] = malloc(rank * sizeof(int64_t));
+      if (!m->shapes[i]) {
+        oom();
+        goto item_fail;
+      }
+      if (status_error(ort->GetDimensions(shape, m->shapes[i], rank),
+                       "metadata.shape"))
+        goto item_fail;
+    }
+    ort->ReleaseTypeInfo(info);
+    continue;
+  item_fail:
+    ort->ReleaseTypeInfo(info);
+    return 1;
+  }
+  return 0;
+}
+static const char *option(const char **keys, const char **vals, int n,
+                          const char *key) {
+  for (int i = 0; i < n; i++)
+    if (!strcmp(keys[i], key))
+      return vals[i];
+  return NULL;
+}
+static int int_option(const char **keys, const char **vals, int n,
+                      const char *key, int def, int min, int max, int *dest) {
+  const char *v = option(keys, vals, n, key);
+  if (!v) {
+    *dest = def;
+    return 0;
+  }
+  char *end;
+  long x = strtol(v, &end, 10);
+  if (!*v || *end || x < min || x > max)
+    return error(2, "session.options", "Invalid integer option");
+  *dest = (int)x;
+  return 0;
+}
+static void append_csv(char *buf, size_t cap, const char *value) {
+  size_t used = strlen(buf);
+  snprintf(buf + used, cap - used, "%s%s", used ? "," : "", value);
+}
+LibOnnxSessionHandle lib_onnx_session_create(
+    LibOnnxRuntimeHandle rt, const char *path, const void *bytes, size_t length,
+    const char **providers, int32_t np, const char **keys, const char **vals,
+    int32_t no, int32_t threads, int32_t fallback, int32_t hardware) {
+  lib_onnx_clear_last_error();
+  if (!rt || (!path && (!bytes || !length)) || np < 0 || no < 0 ||
+      (np && !providers) || (no && (!keys || !vals)) || threads < 1) {
+    error(2, "session.arguments", "Invalid session arguments");
+    return NULL;
+  }
+  for (int i = 0; i < no; i++)
+    if (!keys[i] || !vals[i]) {
+      error(2, "session.options", "Null option");
+      return NULL;
+    }
+  for (int i = 0; i < no; i++)
+    for (int j = 0; j < i; j++)
+      if (!strcmp(keys[i], keys[j])) {
+        error(2, "session.options", "Duplicate provider/session option key");
+        return NULL;
+      }
+  if (fallback < 0 || fallback > 2 || hardware < 0 || hardware > 2) {
+    error(2, "policy", "Invalid policy enum");
+    return NULL;
+  }
+  if (fallback == 2) {
+    error(12, "policy",
+          "UnsupportedPolicy: reliable whitelist validation of fused "
+          "nodes/subgraphs is unavailable");
+    return NULL;
+  }
+  if (hardware) {
+    error(
+        6, "policy.hardware",
+        "HardwareVerificationUnavailable: no per-run physical GPU/NPU "
+        "telemetry is available; use hardwareRequirement.any for a preference");
+    return NULL;
+  }
+  pthread_mutex_lock(&rt->mu);
+  if (rt->closing) {
+    pthread_mutex_unlock(&rt->mu);
+    error(10, "session.create", "Runtime closed");
+    return NULL;
+  }
+  atomic_fetch_add(&rt->refs, 1);
+  pthread_mutex_unlock(&rt->mu);
+  struct LibOnnxSession *s = calloc(1, sizeof(*s));
+  OrtSessionOptions *opts = NULL;
+  if (!s) {
+    runtime_release(rt);
+    oom();
+    return NULL;
+  }
+  s->rt = rt;
+  atomic_init(&s->refs, 1);
+  s->fallback = fallback;
+  s->cpu_only = 1;
+  if (int_option(keys, vals, no, "bridge.max_queue", 16, 0, 65536,
+                 &s->max_queue) ||
+      int_option(keys, vals, no, "bridge.max_active", 1, 1, 64, &s->max_active))
+    goto fail;
+  if (status_error(ort->CreateSessionOptions(&opts), "session.options"))
+    goto fail;
+  if (status_error(ort->SetIntraOpNumThreads(opts, threads), "session.threads"))
+    goto fail;
+  int inter, level, pattern;
+  if (int_option(keys, vals, no, "session.inter_threads", 1, 1, 65536,
+                 &inter) ||
+      int_option(keys, vals, no, "session.optimization", 99, 0, 99, &level) ||
+      int_option(keys, vals, no, "session.memory_pattern", 1, 0, 1, &pattern))
+    goto fail;
+  if (level != 0 && level != 1 && level != 2 && level != 99) {
+    error(2, "session.options", "Invalid graph optimization level");
+    goto fail;
+  }
+  if (status_error(ort->SetInterOpNumThreads(opts, inter), "session.threads") ||
+      status_error(ort->SetSessionGraphOptimizationLevel(
+                       opts, (GraphOptimizationLevel)level),
+                   "session.optimization") ||
+      status_error(pattern ? ort->EnableMemPattern(opts)
+                           : ort->DisableMemPattern(opts),
+                   "session.memory"))
+    goto fail;
+  const char *log = option(keys, vals, no, "session.log_id");
+  if (log && status_error(ort->SetSessionLogId(opts, log), "session.logging"))
+    goto fail;
+  int configured = 0;
+  for (int p = 0; p < np; p++) {
+    const char *name = providers[p];
+    if (!name) {
+      error(2, "provider", "Null provider name");
+      goto fail;
+    }
+    for (int q = 0; q < p; q++)
+      if (!strcmp(name, providers[q])) {
+        error(2, "provider", "Duplicate provider");
+        goto fail;
+      }
+    if (!strcmp(name, "CPU")) {
+      if (p != np - 1) {
+        error(2, "policy.priority",
+              "CPU EP must be last in graph allocation priority");
+        goto fail;
+      }
+      if (fallback == 1 && np > 1) {
+        error(5, "policy",
+              "Strict accelerator policy conflicts with explicit CPU EP");
+        goto fail;
+      }
+      continue;
+    }
+    if (strcmp(name, "CoreML") && strcmp(name, "QNN")) {
+      error(4, "provider",
+            "Only CPU, CoreML and QNN are supported by this bridge");
+      goto fail;
+    }
+    s->accelerators_requested = 1;
+    const char *prefix = !strcmp(name, "CoreML") ? "coreml." : "qnn.";
+    size_t plen = strlen(prefix);
+    const char **pk = calloc((size_t)no + 1, sizeof(char *));
+    const char **pv = calloc((size_t)no + 1, sizeof(char *));
+    if (!pk || !pv) {
+      free(pk);
+      free(pv);
+      oom();
+      goto fail;
+    }
+    size_t n = 0;
+    for (int i = 0; i < no; i++)
+      if (!strncmp(keys[i], prefix, plen)) {
+        pk[n] = keys[i] + plen;
+        pv[n++] = vals[i];
+      }
+    if (!strcmp(name, "QNN")) {
+      const char *backend = option(keys, vals, no, "qnn.backend_path");
+      const char *base = backend ? strrchr(backend, '/') : NULL;
+      base = base ? base + 1 : backend;
+      if (!base || strcmp(base, "libQnnHtp.so")) {
+        free(pk);
+        free(pv);
+        error(2, "qnn.backend",
+              "QNN HTP requires backend_path ending in libQnnHtp.so, not a "
+              "CPU/GPU backend");
+        goto fail;
+      }
+    }
+    OrtStatus *st =
+        ort->SessionOptionsAppendExecutionProvider(opts, name, pk, pv, n);
+    free(pk);
+    free(pv);
+    if (st) {
+      status_error(st,
+                   !strcmp(name, "QNN") ? "qnn.initialize" : "coreml.register");
+      size_t used = strlen(s->initialization);
+      snprintf(s->initialization + used, sizeof(s->initialization) - used,
+               "%s%s initialization failed (ORT %d): %.800s", used ? "; " : "",
+               name, last_error.ort_code, last_error.message);
+      if (fallback == 1) {
+        last_error.code = 4;
+        goto fail;
+      }
+      /* Explicit allowed policy permits initialization fallback; diagnostics
+       * retain that fact rather than claiming EP assignment or physical
+       * utilization. */
+      continue;
+    }
+    configured++;
+    s->cpu_only = 0;
+    append_csv(s->registered, sizeof(s->registered), name);
+  }
+  if (!configured)
+    strcpy(s->registered, "CPU");
+  else if (fallback == 0)
+    append_csv(s->registered, sizeof(s->registered), "CPU");
+  if (configured && fallback == 1 &&
+      status_error(ort->AddSessionConfigEntry(
+                       opts, "session.disable_cpu_ep_fallback", "1"),
+                   "policy.cpu_fallback"))
+    goto fail;
+  OrtStatus *st = path ? ort->CreateSession(rt->env, path, opts, &s->value)
+                       : ort->CreateSessionFromArray(rt->env, bytes, length,
+                                                     opts, &s->value);
+  if (status_error(st, "session.load")) {
+    if (configured && fallback == 1)
+      last_error.code = 5;
+    else
+      last_error.code = 3;
+    goto fail;
+  }
+  ort->ReleaseSessionOptions(opts);
+  opts = NULL;
+  if (metadata(s->value, 0, &s->inputs) || metadata(s->value, 1, &s->outputs))
+    goto fail;
+  pthread_mutex_lock(&rt->mu);
+  int closing = rt->closing;
+  pthread_mutex_unlock(&rt->mu);
+  if (closing) {
+    error(10, "session.load", "Runtime closed during load");
+    goto fail;
+  }
+  lib_onnx_clear_last_error();
+  return s;
+fail:
+  if (opts)
+    ort->ReleaseSessionOptions(opts);
+  session_release(s);
+  return NULL;
+}
+#define META_ACCESSORS(kind, member)                                           \
+  int32_t lib_onnx_session_get_##kind##_count(LibOnnxSessionHandle s) {        \
+    return s ? s->member.count : 0;                                            \
+  }                                                                            \
+  const char *lib_onnx_session_get_##kind##_name(LibOnnxSessionHandle s,       \
+                                                 int32_t i) {                  \
+    return s && i >= 0 && i < s->member.count ? s->member.names[i] : NULL;     \
+  }                                                                            \
+  int32_t lib_onnx_session_get_##kind##_type(LibOnnxSessionHandle s,           \
+                                             int32_t i) {                      \
+    return s && i >= 0 && i < s->member.count ? s->member.types[i] : 0;        \
+  }                                                                            \
+  int32_t lib_onnx_session_get_##kind##_shape(                                 \
+      LibOnnxSessionHandle s, int32_t i, int64_t *dst, int32_t cap) {          \
+    if (!s || i < 0 || i >= s->member.count)                                   \
+      return -1;                                                               \
+    int rank = s->member.ranks[i];                                             \
+    if (!dst)                                                                  \
+      return rank;                                                             \
+    if (cap < rank)                                                            \
+      return -1;                                                               \
+    if (rank > 0)                                                              \
+      memcpy(dst, s->member.shapes[i], (size_t)rank * sizeof(int64_t));        \
+    return rank;                                                               \
+  }
+META_ACCESSORS(input, inputs)
+META_ACCESSORS(output, outputs)
 
-  task->timeout_ms = timeout_ms;
-  task->callback = callback;
-  task->user_data = user_data;
-
-  if (rt->task_queue_tail == NULL) {
-    rt->task_queue_head = task;
-    rt->task_queue_tail = task;
+LibOnnxTaskHandle lib_onnx_session_submit(LibOnnxSessionHandle s,
+                                          int64_t request, const char **names,
+                                          LibOnnxTensorHandle *tensors,
+                                          int32_t ni, const char **out,
+                                          int32_t no, int64_t timeout) {
+  lib_onnx_clear_last_error();
+  if (!s || ni < 0 || no < 1 || (ni && (!names || !tensors)) || !out ||
+      timeout < 0) {
+    error(2, "submit", "Invalid task arguments");
+    return NULL;
+  }
+  struct LibOnnxRuntime *rt = s->rt;
+  pthread_mutex_lock(&rt->mu);
+  if (rt->closing || s->closing) {
+    error(10, "submit", "Runtime or session is closed");
+    pthread_mutex_unlock(&rt->mu);
+    return NULL;
+  }
+  if (rt->pending >= rt->nworkers + 64 ||
+      s->pending >= s->max_active + s->max_queue) {
+    error(9, "submit", "Session bounded queue is full");
+    pthread_mutex_unlock(&rt->mu);
+    return NULL;
+  }
+  /* Reserve bounded admission and a Session reference, then copy outside the
+   * scheduler mutex so control/close never waits behind large input copies. */
+  rt->pending++;
+  s->pending++;
+  atomic_fetch_add(&s->refs, 1);
+  pthread_mutex_unlock(&rt->mu);
+  struct LibOnnxTask *t = calloc(1, sizeof(*t));
+  if (!t) {
+    oom();
+    goto failed_reservation;
+  }
+  atomic_init(&t->refs, 1);
+  t->s = s;
+  t->id = atomic_fetch_add(&next_task_id, 1);
+  t->request_id = request;
+  t->ni = ni;
+  t->no = no;
+  int64_t accepted = now_us();
+  if (timeout > INT64_MAX - accepted) {
+    error(2, "submit.timeout", "Timeout overflow");
+    goto failed;
+  }
+  t->deadline = timeout ? accepted + timeout : 0;
+  t->in_names = calloc(ni ? ni : 1, sizeof(char *));
+  t->inputs = calloc(ni ? ni : 1, sizeof(LibOnnxTensorHandle));
+  t->out_names = calloc((size_t)no, sizeof(char *));
+  t->outputs = calloc((size_t)no, sizeof(LibOnnxTensorHandle));
+  if (!t->in_names || !t->inputs || !t->out_names || !t->outputs) {
+    oom();
+    goto failed;
+  }
+  if (status_error(ort->CreateRunOptions(&t->options), "submit.run_options"))
+    goto failed;
+  for (int i = 0; i < ni; i++) {
+    if (!names[i] || !tensors[i]) {
+      error(2, "submit.inputs", "Null input name/tensor");
+      goto failed;
+    }
+    t->in_names[i] = strdup(names[i]);
+    if (!t->in_names[i]) {
+      oom();
+      goto failed;
+    }
+    LibOnnxTensorHandle in = tensors[i];
+    t->inputs[i] = lib_onnx_tensor_create(in->dtype, in->shape, in->rank,
+                                          in->data, in->bytes, 1);
+    if (!t->inputs[i])
+      goto failed;
+  }
+  for (int i = 0; i < no; i++) {
+    if (!out[i]) {
+      error(2, "submit.outputs", "Null output name");
+      goto failed;
+    }
+    t->out_names[i] = strdup(out[i]);
+    if (!t->out_names[i]) {
+      oom();
+      goto failed;
+    }
+  }
+  pthread_mutex_lock(&rt->mu);
+  if (rt->closing || s->closing) {
+    pthread_mutex_unlock(&rt->mu);
+    error(10, "submit", "Closed during input preparation");
+    goto failed;
+  }
+  atomic_fetch_add(&t->refs, 1);
+  if (rt->tail)
+    rt->tail->next = t;
+  else
+    rt->head = t;
+  rt->tail = t;
+  t->live_next = rt->live;
+  rt->live = t;
+  s->queued++;
+  pthread_cond_broadcast(&rt->cv);
+  pthread_mutex_unlock(&rt->mu);
+  return t;
+failed:
+  /* Release pending reservation before its last Session reference. */
+  pthread_mutex_lock(&rt->mu);
+  rt->pending--;
+  s->pending--;
+  pthread_cond_broadcast(&rt->cv);
+  pthread_mutex_unlock(&rt->mu);
+  lib_onnx_task_release(t);
+  return NULL;
+failed_reservation:
+  pthread_mutex_lock(&rt->mu);
+  rt->pending--;
+  s->pending--;
+  pthread_cond_broadcast(&rt->cv);
+  pthread_mutex_unlock(&rt->mu);
+  session_release(s);
+  return NULL;
+}
+static LibOnnxTensorHandle wrap_output(OrtValue *value) {
+  int is_tensor = 0;
+  OrtTensorTypeAndShapeInfo *info = NULL;
+  struct LibOnnxTensor *t = NULL;
+  if (status_error(ort->IsTensor(value, &is_tensor), "output.kind"))
+    return NULL;
+  if (!is_tensor) {
+    error(11, "output.kind", "Unsupported non-Tensor OrtValue");
+    return NULL;
+  }
+  if (status_error(ort->GetTensorTypeAndShape(value, &info), "output.type"))
+    return NULL;
+  t = calloc(1, sizeof(*t));
+  if (!t) {
+    oom();
+    goto fail;
+  }
+  ONNXTensorElementDataType dt;
+  size_t rank = 0, ort_count = 0, ort_bytes = 0;
+  if (status_error(ort->GetTensorElementType(info, &dt), "output.dtype") ||
+      status_error(ort->GetDimensionsCount(info, &rank), "output.rank"))
+    goto fail;
+  t->dtype = dtype_from_ort(dt);
+  if (rank > INT32_MAX || rank > SIZE_MAX / sizeof(int64_t)) {
+    error(2, "output.rank", "Output rank overflow");
+    goto fail;
+  }
+  t->rank = (int)rank;
+  if (rank) {
+    t->shape = malloc(rank * sizeof(int64_t));
+    if (!t->shape) {
+      oom();
+      goto fail;
+    }
+    if (status_error(ort->GetDimensions(info, t->shape, rank), "output.shape"))
+      goto fail;
+  }
+  if (tensor_size(t->dtype, t->shape, t->rank, &t->count, &t->bytes) ||
+      status_error(ort->GetTensorShapeElementCount(info, &ort_count),
+                   "output.elements") ||
+      status_error(ort->GetTensorSizeInBytes(value, &ort_bytes),
+                   "output.bytes"))
+    goto fail;
+  if (ort_count != (size_t)t->count || ort_bytes != t->bytes) {
+    error(2, "output.buffer", "ORT output buffer does not match shape/type");
+    goto fail;
+  }
+  if (status_error(ort->GetTensorMutableData(value, &t->data), "output.data"))
+    goto fail;
+  if (t->bytes && !t->data) {
+    error(2, "output.data", "Null output buffer");
+    goto fail;
+  }
+  ort->ReleaseTensorTypeAndShapeInfo(info);
+  t->value = value;
+  return t;
+fail:
+  if (info)
+    ort->ReleaseTensorTypeAndShapeInfo(info);
+  lib_onnx_tensor_destroy(t);
+  return NULL;
+}
+#ifdef LIB_ONNX_TESTING
+/* Test-only native latch. Never included in distributed hook builds. */
+static atomic_int test_barrier = 0;
+static atomic_int test_waiting = 0;
+int32_t lib_onnx_test_barrier_waiting(void) {
+  return atomic_load(&test_waiting);
+}
+int32_t lib_onnx_test_cancel_code(LibOnnxTaskHandle t) {
+  pthread_mutex_lock(&t->s->rt->mu);
+  int v = t->cancel_code;
+  pthread_mutex_unlock(&t->s->rt->mu);
+  return v;
+}
+void lib_onnx_test_barrier(int32_t hold) { atomic_store(&test_barrier, hold); }
+int32_t lib_onnx_test_task_in_run(LibOnnxTaskHandle t) {
+  pthread_mutex_lock(&t->s->rt->mu);
+  int v = t->in_run;
+  pthread_mutex_unlock(&t->s->rt->mu);
+  return v;
+}
+int32_t lib_onnx_test_task_at_barrier(LibOnnxTaskHandle t) {
+  pthread_mutex_lock(&t->s->rt->mu);
+  int v = t->at_barrier;
+  pthread_mutex_unlock(&t->s->rt->mu);
+  return v;
+}
+#endif
+static void execute(struct LibOnnxTask *t) {
+  const OrtValue **inputs = calloc(t->ni ? t->ni : 1, sizeof(OrtValue *));
+  OrtValue **outputs = calloc((size_t)t->no, sizeof(OrtValue *));
+  if (!inputs || !outputs) {
+    oom();
+    goto done;
+  }
+  for (int i = 0; i < t->ni; i++)
+    inputs[i] = t->inputs[i]->value;
+#ifdef LIB_ONNX_TESTING
+  pthread_mutex_lock(&t->s->rt->mu);
+  t->in_run = 1;
+  pthread_mutex_unlock(&t->s->rt->mu);
+#endif
+  if (status_error(ort->Run(t->s->value, t->options,
+                            (const char *const *)t->in_names, inputs,
+                            (size_t)t->ni, (const char *const *)t->out_names,
+                            (size_t)t->no, outputs),
+                   "run"))
+    goto done;
+  for (int i = 0; i < t->no; i++) {
+    t->outputs[i] = wrap_output(outputs[i]);
+    if (!t->outputs[i])
+      goto done;
+    outputs[i] = NULL;
+  }
+  t->diagnostic = calloc(1, sizeof(*t->diagnostic));
+  if (!t->diagnostic) {
+    oom();
+    goto done;
+  }
+  snprintf(t->diagnostic->registered, sizeof(t->diagnostic->registered), "%s",
+           t->s->registered);
+  snprintf(t->diagnostic->details, sizeof(t->diagnostic->details),
+           "Physical execution unobserved. Registration does not prove graph "
+           "assignment or hardware telemetry.%s%s",
+           t->s->initialization[0] ? " Initialization diagnostics: " : "",
+           t->s->initialization);
+  if (t->s->cpu_only) {
+    strcpy(t->diagnostic->provider, "CPU");
+    t->diagnostic->evidence = 1;
+    t->diagnostic->fallback = t->s->accelerators_requested ? 1 : 0;
   } else {
-    rt->task_queue_tail->next = task;
-    rt->task_queue_tail = task;
+    t->diagnostic->evidence = 2;
+    t->diagnostic->fallback = t->s->fallback == 1 ? 0 : -1;
   }
-  rt->task_queue_size++;
-
-  pthread_cond_signal(&rt->queue_cond);
-  pthread_mutex_unlock(&rt->queue_mutex);
-
-  return LIB_ONNX_OK;
+  t->diagnostic->duration = now_us() - t->started;
+done:
+  if (outputs)
+    for (int i = 0; i < t->no; i++)
+      if (outputs[i])
+        ort->ReleaseValue(outputs[i]);
+  free(outputs);
+  free(inputs);
+  t->failure = last_error;
+  t->status = last_error.code;
+}
+static void *worker_loop(void *arg) {
+  struct LibOnnxRuntime *rt = arg;
+  for (;;) {
+    pthread_mutex_lock(&rt->mu);
+    struct LibOnnxTask *t = NULL, *prev = NULL;
+    for (;;) {
+      for (t = rt->head, prev = NULL; t; prev = t, t = t->next)
+        if (t->cancel_code || t->s->active < t->s->max_active)
+          break;
+      if (t)
+        break;
+      if (rt->closing && !rt->head) {
+        pthread_mutex_unlock(&rt->mu);
+        return NULL;
+      }
+      pthread_cond_wait(&rt->cv, &rt->mu);
+    }
+    if (prev)
+      prev->next = t->next;
+    else
+      rt->head = t->next;
+    if (rt->tail == t)
+      rt->tail = prev;
+    t->next = NULL;
+    t->state = 1;
+    t->s->queued--;
+    t->s->active++;
+    t->started = now_us();
+    if (t->deadline && now_us() >= t->deadline)
+      cancel_locked(t, 8);
+#ifdef LIB_ONNX_TESTING
+    t->at_barrier = 1;
+    atomic_fetch_add(&test_waiting, 1);
+    pthread_mutex_unlock(&rt->mu);
+    while (atomic_load(&test_barrier)) {
+      struct timespec pause = {0, 1000000};
+      nanosleep(&pause, NULL);
+    }
+    pthread_mutex_lock(&rt->mu);
+    t->at_barrier = 0;
+    atomic_fetch_sub(&test_waiting, 1);
+#endif
+    int cancelled = t->cancel_code;
+    pthread_mutex_unlock(&rt->mu);
+    lib_onnx_clear_last_error();
+    if (!cancelled)
+      execute(t);
+    pthread_mutex_lock(&rt->mu);
+    if (t->deadline && now_us() >= t->deadline && !t->cancel_code)
+      cancel_locked(t, 8);
+    if (t->cancel_code) {
+      if (t->cancel_ort_code)
+        t->failure.ort_code = t->cancel_ort_code;
+      t->status = t->cancel_code;
+      t->failure.code = t->cancel_code;
+      snprintf(t->failure.stage, sizeof(t->failure.stage), "run.cancel");
+      snprintf(t->failure.message, sizeof(t->failure.message),
+               "%s requested; native execution has now returned (EP "
+               "interruption is cooperative)",
+               t->cancel_code == 8    ? "Timeout"
+               : t->cancel_code == 10 ? "Close"
+                                      : "Cancellation");
+    }
+    if (t->status) {
+      for (int i = 0; i < t->no; i++) {
+        lib_onnx_tensor_destroy(t->outputs[i]);
+        t->outputs[i] = NULL;
+      }
+      free(t->diagnostic);
+      t->diagnostic = NULL;
+    }
+    struct LibOnnxTask **link = &rt->live;
+    while (*link && *link != t)
+      link = &(*link)->live_next;
+    if (*link)
+      *link = t->live_next;
+    t->s->active--;
+    t->s->pending--;
+    rt->pending--;
+    t->state = 2;
+    pthread_cond_broadcast(&rt->cv);
+    pthread_mutex_unlock(&rt->mu);
+    lib_onnx_task_release(t);
+  }
+}
+static void *monitor_loop(void *arg) {
+  struct LibOnnxRuntime *rt = arg;
+  pthread_mutex_lock(&rt->mu);
+  while (!rt->closing || rt->live) {
+    int64_t now = now_us();
+    for (struct LibOnnxTask *t = rt->live; t; t = t->live_next)
+      if (t->deadline && now >= t->deadline)
+        cancel_locked(t, 8);
+    pthread_cond_broadcast(&rt->cv);
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_nsec += 2000000;
+    if (deadline.tv_nsec >= 1000000000) {
+      deadline.tv_sec++;
+      deadline.tv_nsec -= 1000000000;
+    }
+    /* Wait scheduling may use realtime, but all timeout decisions use
+     * monotonic. */
+    pthread_cond_timedwait(&rt->cv, &rt->mu, &deadline);
+  }
+  pthread_mutex_unlock(&rt->mu);
+  return NULL;
+}
+int64_t lib_onnx_task_id(LibOnnxTaskHandle t) { return t ? t->id : 0; }
+int32_t lib_onnx_task_state(LibOnnxTaskHandle t) {
+  if (!t)
+    return -1;
+  pthread_mutex_lock(&t->s->rt->mu);
+  int state = t->state;
+  pthread_mutex_unlock(&t->s->rt->mu);
+  return state;
+}
+int32_t lib_onnx_task_status(LibOnnxTaskHandle t) {
+  return lib_onnx_task_state(t) == 2 ? t->status : -1;
+}
+int32_t lib_onnx_task_ort_code(LibOnnxTaskHandle t) {
+  return lib_onnx_task_state(t) == 2 ? t->failure.ort_code : 0;
+}
+const char *lib_onnx_task_error(LibOnnxTaskHandle t) {
+  return lib_onnx_task_state(t) == 2 ? t->failure.message : "";
+}
+const char *lib_onnx_task_stage(LibOnnxTaskHandle t) {
+  return lib_onnx_task_state(t) == 2 ? t->failure.stage : "";
+}
+int32_t lib_onnx_task_cancel(LibOnnxTaskHandle t, int32_t reason) {
+  if (!t || (reason != 7 && reason != 8))
+    return 2;
+  pthread_mutex_lock(&t->s->rt->mu);
+  cancel_locked(t, reason);
+  pthread_cond_broadcast(&t->s->rt->cv);
+  pthread_mutex_unlock(&t->s->rt->mu);
+  return 0;
+}
+LibOnnxTensorHandle lib_onnx_task_output(LibOnnxTaskHandle t, int32_t i) {
+  return lib_onnx_task_state(t) == 2 && i >= 0 && i < t->no ? t->outputs[i]
+                                                            : NULL;
+}
+LibOnnxDiagnosticReportHandle lib_onnx_task_diagnostic(LibOnnxTaskHandle t) {
+  return lib_onnx_task_state(t) == 2 ? t->diagnostic : NULL;
+}
+int32_t lib_onnx_session_run_sync(LibOnnxSessionHandle s, int64_t req,
+                                  const char **names,
+                                  LibOnnxTensorHandle *tensors, int32_t ni,
+                                  const char **out,
+                                  LibOnnxTensorHandle *outputs, int32_t no,
+                                  LibOnnxDiagnosticReportHandle *diag) {
+  if (!outputs)
+    return error(2, "run.sync", "Null output buffer");
+  for (int i = 0; i < no; i++)
+    outputs[i] = NULL;
+  if (diag)
+    *diag = NULL;
+  struct LibOnnxTask *t =
+      lib_onnx_session_submit(s, req, names, tensors, ni, out, no, 0);
+  if (!t)
+    return last_error.code;
+  pthread_mutex_lock(&s->rt->mu);
+  while (t->state != 2)
+    pthread_cond_wait(&s->rt->cv, &s->rt->mu);
+  int status = t->status;
+  last_error = t->failure;
+  if (!status) {
+    for (int i = 0; i < no; i++) {
+      outputs[i] = t->outputs[i];
+      t->outputs[i] = NULL;
+    }
+    if (diag) {
+      *diag = t->diagnostic;
+      t->diagnostic = NULL;
+    }
+  }
+  pthread_mutex_unlock(&s->rt->mu);
+  lib_onnx_task_release(t);
+  return status;
 }

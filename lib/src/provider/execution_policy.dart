@@ -2,7 +2,7 @@ import 'execution_provider.dart';
 
 /// Comprehensive execution policy controlling provider order, CPU fallback, and hardware requirements.
 class ExecutionPolicy {
-  /// Ordered list of execution providers to attempt.
+  /// Graph allocation priority. All requested accelerators are registered in order.
   final List<ExecutionProvider> providerPriority;
 
   /// CPU fallback behavior.
@@ -54,18 +54,21 @@ class ExecutionPolicy {
     bool preferAne = true,
     bool allowCpuFallback = false,
     String? modelCacheDir,
+    bool verifyHardware = false,
   }) {
     return ExecutionPolicy(
       providerPriority: allowCpuFallback
           ? [ExecutionProvider.coreML, ExecutionProvider.cpu]
           : [ExecutionProvider.coreML],
-      fallbackPolicy:
-          allowCpuFallback ? FallbackPolicy.allowed : FallbackPolicy.strict,
-      hardwareRequirement:
-          preferAne ? HardwareRequirement.npu : HardwareRequirement.gpu,
-      coreMLComputeUnits:
-          preferAne ? CoreMLComputeUnits.all : CoreMLComputeUnits.cpuAndGpu,
-      requireAne: preferAne,
+      fallbackPolicy: allowCpuFallback
+          ? FallbackPolicy.allowed
+          : FallbackPolicy.strict,
+      hardwareRequirement: verifyHardware
+          ? (preferAne ? HardwareRequirement.npu : HardwareRequirement.gpu)
+          : HardwareRequirement.any,
+      coreMLComputeUnits: preferAne
+          ? CoreMLComputeUnits.cpuAndNeuralEngine
+          : CoreMLComputeUnits.cpuAndGpu,
       coreMLModelCacheDir: modelCacheDir,
     );
   }
@@ -75,17 +78,21 @@ class ExecutionPolicy {
     int? socModel,
     bool allowCpuFallback = false,
     String? backendPath,
+    bool verifyHardware = false,
   }) {
     return ExecutionPolicy(
       providerPriority: allowCpuFallback
           ? [ExecutionProvider.qnn, ExecutionProvider.cpu]
           : [ExecutionProvider.qnn],
-      fallbackPolicy:
-          allowCpuFallback ? FallbackPolicy.allowed : FallbackPolicy.strict,
-      hardwareRequirement: HardwareRequirement.npu,
+      fallbackPolicy: allowCpuFallback
+          ? FallbackPolicy.allowed
+          : FallbackPolicy.strict,
+      hardwareRequirement: verifyHardware
+          ? HardwareRequirement.npu
+          : HardwareRequirement.any,
       qnnPerformanceMode: QnnHtpPerformanceMode.highPerformance,
       qnnSocModel: socModel,
-      qnnBackendPath: backendPath,
+      qnnBackendPath: backendPath ?? 'libQnnHtp.so',
     );
   }
 
@@ -100,32 +107,78 @@ class ExecutionPolicy {
 
   /// Exports options to key-value pairs for the native bridge.
   Map<String, String> toOptionMap() {
+    validate();
     final map = <String, String>{};
-    map['fallback_policy'] = fallbackPolicy.nativeCode.toString();
-    map['hardware_requirement'] = hardwareRequirement.nativeCode.toString();
-
-    // CoreML options
-    map['coreml.MLComputeUnits'] = coreMLComputeUnits.value;
-    map['coreml.RequireANE'] = requireAne ? '1' : '0';
-    if (coreMLModelCacheDir != null && coreMLModelCacheDir!.isNotEmpty) {
-      map['coreml.ModelCacheDir'] = coreMLModelCacheDir!;
+    if (providerPriority.contains(ExecutionProvider.coreML)) {
+      map['coreml.MLComputeUnits'] = coreMLComputeUnits.value;
+      map['coreml.ModelFormat'] = 'MLProgram';
+      map['coreml.RequireStaticInputShapes'] = '0';
+      map['coreml.EnableOnSubgraphs'] = '0';
+      if (coreMLModelCacheDir case final dir? when dir.isNotEmpty) {
+        map['coreml.ModelCacheDirectory'] = dir;
+      }
     }
-
-    // QNN options
-    map['qnn.htp_performance_mode'] = qnnPerformanceMode.value;
-    if (qnnBackendPath != null && qnnBackendPath!.isNotEmpty) {
-      map['qnn.backend_path'] = qnnBackendPath!;
+    if (providerPriority.contains(ExecutionProvider.qnn)) {
+      map['qnn.htp_performance_mode'] = qnnPerformanceMode.value;
+      map['qnn.backend_path'] = qnnBackendPath ?? 'libQnnHtp.so';
+      if (qnnSocModel != null) map['qnn.soc_model'] = qnnSocModel.toString();
     }
-    if (qnnSocModel != null) {
-      map['qnn.soc_model'] = qnnSocModel.toString();
-    }
-
-    // Whitelisted ops
-    if (whitelistedOps.isNotEmpty) {
-      map['whitelisted_ops'] = whitelistedOps.join(',');
-    }
-
     map.addAll(extraProviderOptions);
-    return map;
+    return Map.unmodifiable(map);
+  }
+
+  /// Reject guarantees the selected ORT API cannot safely enforce.
+  void validate() {
+    if (providerPriority.contains(ExecutionProvider.cpu) &&
+        providerPriority.last != ExecutionProvider.cpu) {
+      throw ArgumentError(
+        'ORT CPU EP must be last in graph allocation priority',
+      );
+    }
+    if (providerPriority.toSet().length != providerPriority.length) {
+      throw ArgumentError('Duplicate providers');
+    }
+    if (fallbackPolicy == FallbackPolicy.whitelistedOps) {
+      throw UnsupportedError(
+        'UnsupportedPolicy: fused CPU nodes and subgraphs cannot be reliably whitelisted',
+      );
+    }
+    if (requireAne) {
+      throw UnsupportedError(
+        'RequireANE is unsupported. CPUAndNeuralEngine permits CPU and ANE; use hardwareRequirement for verification',
+      );
+    }
+    if (fallbackPolicy == FallbackPolicy.strict &&
+        providerPriority.contains(ExecutionProvider.cpu) &&
+        providerPriority.length > 1) {
+      throw ArgumentError(
+        'Strict accelerator policy conflicts with explicit CPU EP',
+      );
+    }
+    if (hardwareRequirement != HardwareRequirement.any &&
+        (providerPriority.isEmpty ||
+            providerPriority.every((p) => p == ExecutionProvider.cpu) ||
+            (providerPriority.contains(ExecutionProvider.coreML) &&
+                coreMLComputeUnits == CoreMLComputeUnits.cpuOnly))) {
+      throw ArgumentError(
+        'CPU-only configuration conflicts with physical hardware requirement',
+      );
+    }
+    for (final key in extraProviderOptions.keys) {
+      // Advanced options stay EP-specific and cannot override enforced settings.
+      if ((!key.startsWith('coreml.') && !key.startsWith('qnn.')) ||
+          const {
+            'coreml.MLComputeUnits',
+            'coreml.ModelFormat',
+            'coreml.ModelCacheDirectory',
+            'coreml.ModelCacheDir',
+            'coreml.RequireANE',
+            'qnn.backend_path',
+            'qnn.htp_performance_mode',
+            'qnn.soc_model',
+          }.contains(key)) {
+        throw ArgumentError('Reserved/unsafe extra provider option: $key');
+      }
+    }
   }
 }

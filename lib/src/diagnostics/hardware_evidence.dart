@@ -12,7 +12,7 @@ enum EvidenceLevel {
   /// The model graph was partitioned into subgraphs assigned to the accelerator EP.
   graphPartitioned(3, 'Graph Partitioned to EP'),
 
-  /// Physical accelerator engagement confirmed via OS compute plan or telemetry trace.
+  /// Physical accelerator engagement confirmed by per-run telemetry (not a compute plan).
   hardwareObserved(4, 'Hardware Observed (GPU/ANE/NPU)'),
 
   /// Requested accelerator, but hardware activity cannot be reliably verified on this OS/driver.

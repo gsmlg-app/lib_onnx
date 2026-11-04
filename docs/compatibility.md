@@ -1,38 +1,17 @@
-# 工具链与兼容性规范
+# Compatibility
 
-## 1. 软件版本锁（Version Pins）
+| Component | Candidate requirement / verified toolchain |
+|---|---|
+| Bridge | ABI2; package0.2.0-dev.1; old bridges rejected |
+| ORT | Exact1.31.1 / C API31; checksummed official archives |
+| Dart | >=3.10<4, for native-assets hooks; tested3.13.7 |
+| Flutter | Hook-capable toolchain; tested3.47.9; example minimum3.38 |
+| Native | C11, pthreads; tested AppleClang21 / Xcode27.2 |
+| macOS arm64 | Minimum14, dictated by actual pinned ORT LC_BUILD_VERSION |
+| iOS device/simulator | Separate target-specific bundles required; deployment/signing must match supplied artifact |
+| Android | arm64-v8a; explicit NDK/ORT QNN/HTP inputs; every ELF and final package must pass16KB audit |
+| ONNX | Fixtures use opset17; acceptance is per actual model/profile, not every opset/operator |
 
-| 组件 | 锁定版本 | 说明 |
-|---|---|---|
-| **ONNX Runtime** | `v1.31.1` (ORT C API Version 31) | 统一 C/C++ 动态链接库与头文件 |
-| **Dart SDK** | `>= 3.3.0 < 4.0.0` | 支持现代 FFI 与内存模型 |
-| **Flutter** | `>= 3.19.0` | 经过 Flutter 3.47+ 验证 |
-| **C/C++ 标准** | `C11` / `C++17` | 原生 C ABI 桥接层无外部依赖 |
-| **Apple Xcode / SDK** | Xcode 15+ / macOS SDK 14+ | 兼容 CoreML 6/7/8 API |
-| **Android NDK** | `r25c` 或更高 | 具备 16 KB 分页支持 |
-| **ONNX Opset** | `Opset 17` (兼容 14 ~ 21) | 官方主流模型导出推荐规范 |
+Numeric bridge widths: float32/int32=4, float16=2, int64=8, int8/uint8/bool=1. Scalars contain one element; any zero dimension makes an empty tensor. Negative actual dimensions/overflow/byte mismatch fail. Model metadata may retain dynamic negative dimensions. Unsupported tensor dtypes, sequence/map/sparse outputs are rejected with explicit errors.
 
----
-
-## 2. 操作系统最低要求
-
-- **macOS**：macOS Monterey (12.0) 及以上，原生支持 Apple Silicon arm64 架构。
-- **iOS / iPadOS**：iOS 15.0 及以上真机（模拟器仅供编译测试，不作为加速依据）。
-- **Android**：Android 10 (API Level 29) 及以上，64 位 ARM (`arm64-v8a`)。
-- **Linux** (桌面扩展)：Ubuntu 20.04+ / Debian 11+ (glibc >= 2.28)。
-- **Windows** (桌面扩展)：Windows 10 Version 2004 (Build 19041) 及以上。
-
----
-
-## 3. 支持的数据类型（Numerical Tensors Only）
-
-| 数据类型 | Dart 对应类型 | 原生字节大小 | 支持状态 |
-|---|---|---|---|
-| `float32` | `Float32List` | 4 字节 | 完全支持 |
-| `float16` | `Uint8List` (IEEE 754 half) | 2 字节 | 存储与传输支持 |
-| `int64` | `Int64List` | 8 字节 | 完全支持 (token IDs / mask) |
-| `int32` | `Int32List` | 4 字节 | 完全支持 |
-| `int8` | `Int8List` | 1 字节 | 完全支持 (量化模型) |
-| `uint8` | `Uint8List` | 1 字节 | 完全支持 |
-| `bool` | `List<bool>` / `Uint8List` | 1 字节 | 完全支持 |
-| `string`, `sequence`, `map`, `sparse`, `bfloat16` | N/A | - | **明确不支持**（抛出 `UnsupportedError`） |
+No Windows/CUDA/DirectML/OpenVINO/TPU/Web implementation is added by this repair. Linux CPU checks are correctness/packaging checks and do not replace accelerator acceptance. No iOS simulator or generic Apple chip assertion establishes ANE execution.

@@ -1,105 +1,48 @@
 name: Tests
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
-
+    branches: [main]
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  unit-tests:
-    name: Dart Unit Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+  runtime-tests:
+    name: Software checks (${{ matrix.os }}); no hardware acceptance implied
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
         with:
-          channel: stable
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
+          sdk: '3.13.7'
+      - run: dart pub get
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-            example/.dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Install dependencies
+          python-version: '3.12'
+      - name: Generate real ORT regression models
         run: |
-          flutter pub get
-          (cd example && flutter pub get)
-
-      - name: Run Dart unit tests
+          python3 tools/make_test_models.py
+      - run: dart test
+      - name: Resolve checksummed ORT from hook output
+        run: python3 tools/resolve_hook_ort.py --github-env "$GITHUB_ENV"
+      - name: Native ASan and UBSan regression harness
+        run: tools/run_native_tests.sh
+      - name: Native task/isolate lifecycle latch regressions
+        run: tools/run_dart_native_tests.sh
+      - name: Native TSan regression harness (supported macOS toolchain)
+        if: runner.os == 'macOS'
+        run: tools/run_native_tests.sh thread
+      - name: Distribution-tool regression tests
         run: |
-          dart test \
-            test/tensor_test.dart \
-            test/execution_policy_test.dart \
-            test/embedding_adapter_test.dart \
-            test/model_manifest_test.dart
-
-  macos-integration-tests:
-    name: macOS Apple Silicon Integration Tests
-    runs-on: macos-14
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-            example/.dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Install dependencies
-        run: |
-          flutter pub get
-          (cd example && flutter pub get)
-
-      - name: Setup ONNX Runtime and Build Native Bridge
-        run: |
-          ORT_VERSION="1.31.1"
-          mkdir -p .cache
-          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-arm64-${ORT_VERSION}.tgz" -o .cache/ort.tgz
-          tar -xzf .cache/ort.tgz -C .cache
-          mkdir -p native/third_party/onnxruntime/lib/macos_arm64
-          cp -R .cache/onnxruntime-osx-arm64-${ORT_VERSION}/include/* native/third_party/onnxruntime/include/
-          cp .cache/onnxruntime-osx-arm64-${ORT_VERSION}/lib/libonnxruntime.dylib native/third_party/onnxruntime/lib/macos_arm64/
-          ln -sf libonnxruntime.dylib native/third_party/onnxruntime/lib/macos_arm64/libonnxruntime.1.dylib
-          make -C native
-          cp native/build/liblib_onnx_bridge.dylib .
-          cp native/third_party/onnxruntime/lib/macos_arm64/libonnxruntime.dylib .
-          ln -sf libonnxruntime.dylib libonnxruntime.1.dylib
-
-      - name: Run full test suite
-        run: dart test
+          python3 tools/test_distribution.py
+          python3 tools/verify_hook_inputs.py
+      - name: Clean archive consumer and release CLI
+        run: python3 tools/verify_consumer.py --output build/consumer-evidence

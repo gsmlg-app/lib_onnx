@@ -1,102 +1,66 @@
 import 'dart:ffi' as ffi;
-import 'dart:io' show Platform, Directory, File;
-import 'package:path/path.dart' as p;
+import 'package:ffi/ffi.dart';
 
-/// Resolves and loads the native lib_onnx dynamic library and its runtime dependencies.
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>(
+  assetId: 'package:lib_onnx/src/ffi/native_library.dart',
+  symbol: 'lib_onnx_library_path',
+)
+external ffi.Pointer<ffi.Char> _bundledLibraryPath();
+
+/// Loads the SDK-bundled native asset or an explicitly supplied development
+/// library. No CWD, system-library, or Homebrew search is performed.
 class NativeLibrary {
+  static const abiVersion = 2;
+  static const ortVersion = '1.31.1';
   static ffi.DynamicLibrary? _cached;
-  static bool _dependencyPreloaded = false;
 
   static ffi.DynamicLibrary load({String? overridePath}) {
-    if (_cached != null && overridePath == null) {
-      return _cached!;
-    }
-
-    _preloadDependencies();
-
-    if (overridePath != null) {
-      final lib = ffi.DynamicLibrary.open(overridePath);
-      _cached = lib;
-      return lib;
-    }
-
-    final candidates = _getCandidatePaths();
-    for (final candidate in candidates) {
-      if (candidate.isNotEmpty && File(candidate).existsSync()) {
-        try {
-          final lib = ffi.DynamicLibrary.open(candidate);
-          _cached = lib;
-          return lib;
-        } catch (_) {
-          // Continue searching candidate paths
-        }
-      }
-    }
-
-    // Fallback: try loading by base name
-    final libName = _getPlatformLibraryName();
+    if (overridePath == null && _cached != null) return _cached!;
+    late final ffi.DynamicLibrary library;
     try {
-      final lib = ffi.DynamicLibrary.open(libName);
-      _cached = lib;
-      return lib;
-    } catch (e) {
+      if (overridePath != null) {
+        library = ffi.DynamicLibrary.open(overridePath);
+      } else {
+        final path = _bundledLibraryPath();
+        if (path == ffi.nullptr) {
+          throw StateError('Native asset could not identify its library path.');
+        }
+        library = ffi.DynamicLibrary.open(path.cast<Utf8>().toDartString());
+      }
+      validate(library);
+    } catch (error) {
       throw StateError(
-        'Failed to load lib_onnx native library ($libName). Checked paths: $candidates. Error: $e',
+        'Unable to load compatible lib_onnx ABI $abiVersion '
+        '(ORT $ortVersion). Build with Dart native-assets hooks, or provide '
+        'an explicit libraryPath for development. Loader error: $error',
       );
     }
+    if (overridePath == null) _cached = library;
+    return library;
   }
 
-  static void _preloadDependencies() {
-    if (_dependencyPreloaded) return;
-    _dependencyPreloaded = true;
-
-    final cwd = Directory.current.path;
-    final ortCandidates = <String>[
-      p.join(cwd, 'libonnxruntime.1.dylib'),
-      p.join(cwd, 'libonnxruntime.dylib'),
-      p.join(cwd, 'native', 'build', 'libonnxruntime.dylib'),
-      p.join(cwd, 'native', 'third_party', 'onnxruntime', 'lib', 'macos_arm64',
-          'libonnxruntime.dylib'),
-      p.join(cwd, 'native', 'third_party', 'onnxruntime', 'lib', 'macos_arm64',
-          'libonnxruntime.1.dylib'),
-      p.join(cwd, 'Frameworks', 'libonnxruntime.dylib'),
-    ];
-
-    for (final cand in ortCandidates) {
-      if (File(cand).existsSync()) {
-        try {
-          ffi.DynamicLibrary.open(cand);
-          break;
-        } catch (_) {}
-      }
+  /// The platform loader rejects incompatible Mach-O/ELF architectures first;
+  /// these checks then reject old bridge ABIs and mismatched ORT engines.
+  static void validate(ffi.DynamicLibrary library) {
+    final abi = library.lookupFunction<ffi.Uint32 Function(), int Function()>(
+      'lib_onnx_abi_version',
+    )();
+    if (abi != abiVersion) {
+      throw StateError(
+        'Bridge ABI mismatch: expected $abiVersion, found $abi.',
+      );
     }
-  }
-
-  static String _getPlatformLibraryName() {
-    if (Platform.isMacOS || Platform.isIOS) {
-      return 'liblib_onnx_bridge.dylib';
-    } else if (Platform.isWindows) {
-      return 'lib_onnx_bridge.dll';
-    } else {
-      return 'liblib_onnx_bridge.so';
+    final ort = library
+        .lookupFunction<
+          ffi.Pointer<ffi.Char> Function(),
+          ffi.Pointer<ffi.Char> Function()
+        >('lib_onnx_ort_version_string')();
+    if (ort == ffi.nullptr) {
+      throw StateError('ORT version is unavailable.');
     }
-  }
-
-  static List<String> _getCandidatePaths() {
-    final list = <String>[];
-    final libName = _getPlatformLibraryName();
-
-    final cwd = Directory.current.path;
-    list.add(p.join(cwd, 'native', 'build', libName));
-    list.add(p.join(cwd, 'build', libName));
-    list.add(p.join(cwd, libName));
-
-    if (Platform.isMacOS) {
-      list.add(p.join(cwd, 'Frameworks', libName));
-      list.add(p.join('/usr/local/lib', libName));
-      list.add(p.join('/opt/homebrew/lib', libName));
+    final version = ort.cast<Utf8>().toDartString();
+    if (version != ortVersion) {
+      throw StateError('ORT mismatch: expected $ortVersion, found $version.');
     }
-
-    return list;
   }
 }

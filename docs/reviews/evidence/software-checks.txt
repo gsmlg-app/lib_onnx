@@ -1,0 +1,76 @@
+2026-11-04, macOS27.0.1 /Apple M1 Max32GiB /Xcode27.2
+Dart3.13.7 /Flutter3.47.9 /ORT1.31.1 /bridge0.2.0-dev.1 ABI2
+Terminal evidence excerpts; full clean-consumer command log is preserved separately.
+
+Baseline reproduction before replacement:
+$ DYLD_LIBRARY_PATH=... .cache/byte_length_test test/fixtures/identity_uint8.onnx
+uint8 output bytes: 16; expected 4
+Assertion failed: (bytes == 4), function main, file byte_length_test.c
+exit_code=134
+After replacement the same native regression printed:
+uint8 output bytes: 4; expected 4
+exit_code=0
+
+$ dart format --output=none --set-exit-if-changed lib hook test tools example/lib native/tests/lifecycle_test.dart
+Formatted 30 files (0 changed).
+exit_code=0
+$ dart analyze lib hook test tools native/tests/lifecycle_test.dart
+No issues found!
+exit_code=0
+$ dart test -r expanded
+00:01 +59: All tests passed!
+Expected negative fixture ORT error:
+This session contains graph nodes that are assigned to the default CPU EP,
+but fallback to CPU EP has been explicitly disabled by the user.
+exit_code=0
+
+$ tools/run_native_tests.sh
+native safety/lifecycle: PASS
+exit_code=0
+$ tools/run_native_tests.sh thread
+native safety/lifecycle: PASS
+exit_code=0
+Both builds execute real long_loop.onnx; expected ORT termination message:
+Non-zero status code returned while running Loop node. Name:''
+Status Message: Exiting due to terminate flag being set to true.
+
+$ tools/run_dart_native_tests.sh
+00:00 +1: All tests passed!
+exit_code=0
+$ tools/run_native_tests.sh none
+native safety/lifecycle: PASS
+exit_code=0
+$ MallocStackLogging=1 leaks -quiet --atExit -- .cache/native-tests/none/runtime_test "$PWD/test/fixtures"
+Process 10377 is not debuggable. Due to security restrictions, leaks can only
+show or save contents of readonly memory of restricted processes.
+Process 10377: 1861 nodes malloced for 465 KB
+Process 10377: 0 leaks for 0 total leaked bytes.
+exit_code=0
+
+The ASan/UBSan and TSan builds instrument bridge/harness, not prebuilt ORT/EPs.
+The native harness was rerun successfully after adding early task-release and
+maxConcurrentRuns2 regressions; the leaks sample above predates those two extra
+harness cases and does not claim exhaustive allocation-failure coverage.
+
+$ python3 tools/test_distribution.py
+Ran 6 tests. OK
+$ python3 tools/test_qwen_profile.py
+Ran 3 tests. OK
+$ python3 tools/verify_hook_inputs.py
+passed: corrupt-archive, missing-offline-archive, ios-never-uses-macos-library,
+android-needs-qnn-inputs, old-bundle-abi
+All exit_code=0; these are tooling/control-flow tests, not device evidence.
+
+$ cd example && flutter analyze --no-pub
+No issues found! (ran in 2.5s)
+exit_code=0
+
+Qwen actual-model prerequisite attempts (Python3.11):
+export_embedding.py acquire: No package metadata was found for huggingface-hub
+export_embedding.py import: No package metadata was found for onnx
+No genuine ONNX export/checkpoint supplied. Full tokenizer/model/reference/
+retrieval/hardware acceptance remains blocked and was not substituted with mocks.
+
+Known native-assets warning: generic Dart JIT macOS target12 is overridden by
+explicit arm64-apple-macos14.0, matching the actual ORT minimum. This is visible
+in packaging and model command logs; it does not claim macOS12 compatibility.

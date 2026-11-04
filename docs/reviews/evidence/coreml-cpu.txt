@@ -1,0 +1,4 @@
+$ dart run tools/validate_mlp.dart --provider=CoreML --units=CPUOnly --fallback=strict
+Running build hooks...Running build hooks...{"status":"passed","model":"test/fixtures/mlp_smoke.onnx","model_file_sha256":"cf26ee02305c2b808e9dd73ba908de34c5341ea690360ace4eaba53bdec3b775","model_identity":"0d2cfad5ac8f58a6592d00055aa4b17f42a77cd0624c98b0aa8be697a3b5e407","task_id":1,"runtime_version":"1.31.1","bridge":"0.2.0-dev.1","requested_provider":"CoreML","compute_units":"CPUOnly","fallback_policy":"strict","registered_providers":["CoreML"],"actual_providers":[],"node_distribution":{},"fallback_occurred":false,"duration_us":1188,"evidence":"epCompiled","details":"Physical execution unobserved. Registration does not prove graph assignment or hardware telemetry.","output":[1.5,2.5,3.5,4.5],"hardware_acceptance":"not-run; no physical utilization trace collected"}
+
+exit_code=0

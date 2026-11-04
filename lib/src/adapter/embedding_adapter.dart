@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import '../tensor/onnx_tensor.dart';
+import '../tensor/tensor_type.dart';
 
-/// Adapter for text embedding models such as Qwen3-Embedding.
+/// Last-valid-token pooling and L2 normalization for text embedding models.
 ///
-/// Implements last-token pooling (as required by Qwen3-Embedding) and L2 normalization.
-/// Does not depend on Python or PyTorch.
+/// This adapter does not tokenize text or claim that a particular model/backend
+/// has been validated. Use the actual model contract to choose [hiddenDim] and
+/// [hasEmbeddedPooling].
 class EmbeddingAdapter {
   final int hiddenDim;
   final bool hasEmbeddedPooling;
@@ -15,145 +17,159 @@ class EmbeddingAdapter {
     this.hasEmbeddedPooling = false,
   });
 
-  /// Extracts normalized embedding vectors from the model output tensor.
+  /// Converts fp32 or IEEE binary16 output into normalized fp32 vectors.
   ///
-  /// If [hasEmbeddedPooling] is true, [modelOutput] is expected to have shape [batch, hiddenDim].
-  /// Otherwise, [modelOutput] is expected to have shape [batch, seqLen, hiddenDim],
-  /// and [attentionMask] (shape [batch, seqLen]) is used to locate the last non-padding token.
+  /// Embedded pooling requires `[batch, hiddenDim]`. Token pooling requires
+  /// `[batch, sequence, hiddenDim]` and a binary mask `[batch, sequence]`.
+  /// Both left and right padding are supported. An all-padding row is invalid.
   List<Float32List> extractEmbeddings({
     required OnnxTensor modelOutput,
     OnnxTensor? attentionMask,
   }) {
-    final rawData = modelOutput.asFloat32List();
     final shape = modelOutput.shape;
-
-    if (hasEmbeddedPooling || shape.length == 2) {
-      // Shape is [batchSize, hiddenDim]
-      final batchSize = shape[0];
-      final dim = shape[1];
-      final results = <Float32List>[];
-
-      for (var b = 0; b < batchSize; b++) {
-        final vec = Float32List(dim);
-        final offset = b * dim;
-        for (var i = 0; i < dim; i++) {
-          vec[i] = rawData[offset + i];
-        }
-        normalizeL2(vec);
-        results.add(vec);
-      }
-      return results;
-    }
-
-    if (shape.length != 3) {
+    final expectedRank = hasEmbeddedPooling ? 2 : 3;
+    if (hiddenDim <= 0 ||
+        shape.length != expectedRank ||
+        shape.any((dimension) => dimension <= 0) ||
+        shape.last != hiddenDim) {
       throw ArgumentError(
-        'Expected modelOutput with shape [batch, seqLen, hiddenDim] (3D) or [batch, hiddenDim] (2D), got $shape',
+        'Expected ${hasEmbeddedPooling ? '[batch, $hiddenDim]' : '[batch, sequence, $hiddenDim]'} '
+        'with positive dimensions, got $shape (hiddenDim=$hiddenDim)',
       );
     }
 
-    final batchSize = shape[0];
-    final seqLen = shape[1];
-    final dim = shape[2];
-
-    final maskData = attentionMask != null
-        ? _extractMask(attentionMask, batchSize, seqLen)
-        : null;
-    final results = <Float32List>[];
-
-    for (var b = 0; b < batchSize; b++) {
-      // Locate index of last valid token
-      var lastTokenIdx = seqLen - 1;
-      if (maskData != null) {
-        lastTokenIdx = 0;
-        for (var s = seqLen - 1; s >= 0; s--) {
-          if (maskData[b][s] > 0) {
-            lastTokenIdx = s;
-            break;
-          }
-        }
+    final data = _floatData(modelOutput);
+    if (data.any((value) => !value.isFinite)) {
+      throw ArgumentError('Model output contains NaN or infinity');
+    }
+    final batch = shape[0];
+    final sequence = hasEmbeddedPooling ? 1 : shape[1];
+    final List<int>? mask;
+    if (hasEmbeddedPooling) {
+      if (attentionMask != null) {
+        throw ArgumentError(
+          'An embedded-pooling output does not accept a mask',
+        );
       }
-
-      // Extract hidden state for lastTokenIdx
-      final vec = Float32List(dim);
-      final offset = (b * seqLen + lastTokenIdx) * dim;
-      for (var i = 0; i < dim; i++) {
-        vec[i] = rawData[offset + i];
+      mask = null;
+    } else {
+      if (attentionMask == null) {
+        throw ArgumentError('Last-token pooling requires an attention mask');
       }
-
-      normalizeL2(vec);
-      results.add(vec);
+      mask = _maskData(attentionMask, batch, sequence);
     }
 
+    final results = <Float32List>[];
+    for (var b = 0; b < batch; b++) {
+      var token = sequence - 1;
+      if (mask != null) {
+        while (token >= 0 && mask[b * sequence + token] == 0) {
+          token--;
+        }
+        if (token < 0) {
+          throw ArgumentError('Attention mask row $b contains no valid token');
+        }
+      }
+      final offset = (b * sequence + token) * hiddenDim;
+      final vector = Float32List.fromList(
+        data.sublist(offset, offset + hiddenDim),
+      );
+      normalizeL2(vector);
+      results.add(vector);
+    }
     return results;
   }
 
-  static List<List<int>> _extractMask(
-      OnnxTensor maskTensor, int batch, int seqLen) {
-    final list = <List<int>>[];
-    if (maskTensor.type.name == 'int64') {
-      final data = maskTensor.asInt64List();
-      for (var b = 0; b < batch; b++) {
-        final row = <int>[];
-        final offset = b * seqLen;
-        for (var s = 0; s < seqLen; s++) {
-          row.add(data[offset + s]);
-        }
-        list.add(row);
-      }
-    } else if (maskTensor.type.name == 'int32') {
-      final data = maskTensor.asInt32List();
-      for (var b = 0; b < batch; b++) {
-        final row = <int>[];
-        final offset = b * seqLen;
-        for (var s = 0; s < seqLen; s++) {
-          row.add(data[offset + s]);
-        }
-        list.add(row);
-      }
-    } else {
-      final data = maskTensor.asUint8List();
-      for (var b = 0; b < batch; b++) {
-        final row = <int>[];
-        final offset = b * seqLen;
-        for (var s = 0; s < seqLen; s++) {
-          row.add(data[offset + s]);
-        }
-        list.add(row);
+  static Float32List _floatData(OnnxTensor tensor) {
+    if (tensor.type == TensorType.float32) return tensor.asFloat32List();
+    if (tensor.type != TensorType.float16) {
+      throw ArgumentError('Embedding output must be float32 or float16');
+    }
+    final bytes = tensor.rawBytes;
+    final data = ByteData.sublistView(bytes);
+    final result = Float32List(tensor.elementCount);
+    for (var i = 0; i < result.length; i++) {
+      final bits = data.getUint16(i * 2, Endian.little);
+      final sign = (bits & 0x8000) == 0 ? 1.0 : -1.0;
+      final exponent = (bits >> 10) & 0x1f;
+      final fraction = bits & 0x3ff;
+      if (exponent == 0) {
+        result[i] = sign * fraction * math.pow(2, -24);
+      } else if (exponent == 31) {
+        result[i] = fraction == 0 ? sign * double.infinity : double.nan;
+      } else {
+        result[i] = sign * (1 + fraction / 1024) * math.pow(2, exponent - 15);
       }
     }
-    return list;
+    return result;
   }
 
-  /// In-place L2 normalization: v = v / ||v||_2
-  static void normalizeL2(Float32List vector) {
-    var sumSq = 0.0;
-    for (var i = 0; i < vector.length; i++) {
-      sumSq += vector[i] * vector[i];
-    }
-    final norm = math.sqrt(sumSq);
-    if (norm > 1e-12) {
-      for (var i = 0; i < vector.length; i++) {
-        vector[i] /= norm;
-      }
-    }
-  }
-
-  /// Calculates cosine similarity between two normalized vectors.
-  static double cosineSimilarity(Float32List a, Float32List b) {
-    if (a.length != b.length) {
+  static List<int> _maskData(OnnxTensor tensor, int batch, int sequence) {
+    if (tensor.shape.length != 2 ||
+        tensor.shape[0] != batch ||
+        tensor.shape[1] != sequence) {
       throw ArgumentError(
-          'Vector dimensions do not match: ${a.length} vs ${b.length}');
+        'Expected attention mask [$batch, $sequence], got ${tensor.shape}',
+      );
+    }
+    final List<int> data;
+    switch (tensor.type) {
+      case TensorType.int64:
+        data = tensor.asInt64List();
+      case TensorType.int32:
+        data = tensor.asInt32List();
+      case TensorType.uint8:
+      case TensorType.boolType:
+        data = tensor.asUint8List();
+      default:
+        throw ArgumentError(
+          'Attention mask must be int64, int32, uint8 or bool',
+        );
+    }
+    if (data.any((value) => value != 0 && value != 1)) {
+      throw ArgumentError('Attention mask values must be zero or one');
+    }
+    return data;
+  }
+
+  /// Normalizes a finite, nonzero vector in place, using scaling to avoid
+  /// overflow/underflow. Zero-norm, empty, NaN and infinite vectors are invalid.
+  static void normalizeL2(Float32List vector) {
+    if (vector.isEmpty || vector.any((value) => !value.isFinite)) {
+      throw ArgumentError('Expected a nonempty finite embedding vector');
+    }
+    var scale = 0.0;
+    for (final value in vector) {
+      scale = math.max(scale, value.abs());
+    }
+    if (scale == 0) throw ArgumentError('Embedding vector has zero norm');
+    var sum = 0.0;
+    for (final value in vector) {
+      final scaled = value / scale;
+      sum += scaled * scaled;
+    }
+    final scaledNorm = math.sqrt(sum);
+    for (var i = 0; i < vector.length; i++) {
+      vector[i] = (vector[i] / scale) / scaledNorm;
+    }
+  }
+
+  /// Dot product of two normalized vectors (their cosine similarity).
+  static double cosineSimilarity(Float32List a, Float32List b) {
+    if (a.isEmpty || a.length != b.length) {
+      throw ArgumentError('Expected matching, nonempty vector dimensions');
     }
     var dot = 0.0;
     for (var i = 0; i < a.length; i++) {
+      if (!a[i].isFinite || !b[i].isFinite) {
+        throw ArgumentError('Cosine similarity requires finite vectors');
+      }
       dot += a[i] * b[i];
     }
     return dot;
   }
 
-  /// Formats a query with instruction per Qwen3-Embedding standard prompt.
-  static String formatQuery(String instruction, String query) {
-    if (instruction.isEmpty) return query;
-    return 'Instruct: $instruction\nQuery: $query';
-  }
+  /// Qwen3-Embedding instruction format. Documents normally have no instruction.
+  static String formatQuery(String instruction, String query) =>
+      instruction.isEmpty ? query : 'Instruct: $instruction\nQuery: $query';
 }

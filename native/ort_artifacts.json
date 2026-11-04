@@ -1,0 +1,29 @@
+{
+  "ort_version": "1.31.1",
+  "ort_api_version": 31,
+  "source": "https://github.com/microsoft/onnxruntime/releases/tag/v1.31.1",
+  "license": "MIT",
+  "targets": {
+    "macos_arm64": {
+      "archive": "onnxruntime-osx-arm64-1.31.1.tgz",
+      "sha256": "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f",
+      "root": "onnxruntime-osx-arm64-1.31.1",
+      "library": "libonnxruntime.1.dylib",
+      "providers": ["CPUExecutionProvider", "CoreMLExecutionProvider"]
+    },
+    "linux_x64": {
+      "archive": "onnxruntime-linux-x64-1.31.1.tgz",
+      "sha256": "c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9",
+      "root": "onnxruntime-linux-x64-1.31.1",
+      "library": "libonnxruntime.so.1",
+      "providers": ["CPUExecutionProvider"]
+    },
+    "linux_arm64": {
+      "archive": "onnxruntime-linux-aarch64-1.31.1.tgz",
+      "sha256": "5317505e2da99be65f8e2775ba3c2afd6d2961fd78aba1bd8f56159f48820c78",
+      "root": "onnxruntime-linux-aarch64-1.31.1",
+      "library": "libonnxruntime.so.1",
+      "providers": ["CPUExecutionProvider"]
+    }
+  }
+}

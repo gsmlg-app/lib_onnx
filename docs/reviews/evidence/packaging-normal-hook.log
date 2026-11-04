@@ -1,0 +1,6 @@
+Running build hooks...Running build hooks...00:00 +0: loading test/model_manifest_test.dart
+00:00 +0: ModelManifest Serializes and deserializes model manifest JSON accurately
+00:00 +1: ModelManifest rejects malformed file identity and unsafe external data paths
+00:00 +2: ModelManifest rejects an external data manifest without per-file checksums
+00:00 +3: ModelManifest Qwen verifier matches runtime identity after renaming the model
+00:00 +4: All tests passed!

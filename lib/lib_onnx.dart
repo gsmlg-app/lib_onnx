@@ -10,7 +10,7 @@
 library lib_onnx;
 
 // Runtime
-export 'src/runtime/onnx_runtime.dart';
+export 'src/runtime/onnx_runtime.dart' hide nativeException;
 
 // Session
 export 'src/session/inference_session.dart';
@@ -27,6 +27,7 @@ export 'src/provider/execution_policy.dart';
 
 // Diagnostics and Hardware Evidence
 export 'src/diagnostics/diagnostic_report.dart';
+export 'src/diagnostics/onnx_exception.dart';
 export 'src/diagnostics/hardware_evidence.dart';
 
 // Adapters

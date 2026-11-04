@@ -68,7 +68,7 @@ enum CoreMLComputeUnits {
   cpuOnly('CPUOnly'),
 
   /// Restricts to CPU and Neural Engine.
-  cpuAndNeuralEngine('CPUAndNE');
+  cpuAndNeuralEngine('CPUAndNeuralEngine');
 
   final String value;
   const CoreMLComputeUnits(this.value);

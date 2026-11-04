@@ -1,45 +1,114 @@
 {
-  "manifest_version": "1.0.0",
+  "manifest_version": 2,
   "package": "lib_onnx",
-  "bridge_abi_version": "0.1.0",
+  "package_version": "0.2.0-dev.1",
+  "bridge_abi_version": 2,
   "ort_version": "1.31.1",
-  "generated_at": "2026-11-03T21:25:00Z",
+  "claimed_supported_targets": [],
+  "software": {
+    "status": "passed",
+    "evidence": [
+      "docs/reviews/runtime-acceleration-remediation.md",
+      "docs/reviews/evidence/software-checks.txt",
+      "docs/reviews/evidence/packaging-clean-consumer.json"
+    ]
+  },
   "targets": {
     "macos_arm64": {
-      "arch": "arm64",
-      "os": "macos",
-      "min_os_version": "12.0",
-      "supported_providers": ["CoreML", "CPU"],
-      "accelerators": ["Apple GPU", "Apple Neural Engine (ANE)"],
+      "status": {
+        "configured": "passed",
+        "compiled": "passed",
+        "packaged": "passed",
+        "clean_consumer": "passed",
+        "device": "not-run"
+      },
+      "hardware_observed": "not-run",
+      "acceleration_claimed": false,
+      "providers_compiled": [
+        "CoreMLExecutionProvider",
+        "WebGpuExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "providers_source": "lib_onnx_runtime_get_available_providers / ORT GetAvailableProviders",
       "binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "16be74c9a59ca6fce7492d4b3a3e16f205dc795dd97c8cf5c413338c016db9c8",
-          "role": "c_abi_bridge"
+          "sha256": "321a6fc257ba331122db0f4524c0c8050ee0b59a6a379874707c0284c7f8eb03",
+          "role": "bridge",
+          "checksum_status": "verified-local-file"
         },
         {
-          "name": "libonnxruntime.dylib",
+          "name": "libonnxruntime.1.dylib",
           "sha256": "17500d6b1e37e70f43a2c57d94233a1bc29fbcb297be0a5f8c7c13184f3307ba",
-          "role": "ort_core_and_coreml_ep"
+          "role": "runtime",
+          "checksum_status": "verified-local-file"
         }
+      ],
+      "evidence": [
+        "docs/reviews/runtime-acceleration-remediation.md"
+      ],
+      "device_software_check": "passed: real host MLP/CoreML and release launch; physical GPU/ANE acceptance not-run",
+      "signature_status": "ad-hoc signatures verified; Developer ID/notarization not-run",
+      "consumer_receipt": "docs/reviews/evidence/packaging-clean-consumer.json",
+      "model_evidence": [
+        "docs/reviews/evidence/coreml-all.txt",
+        "docs/reviews/evidence/coreml-gpu.txt",
+        "docs/reviews/evidence/coreml-ne.txt",
+        "docs/reviews/evidence/coreml-cpu.txt"
       ]
     },
     "ios_arm64": {
-      "arch": "arm64",
-      "os": "ios",
-      "min_os_version": "15.0",
-      "supported_providers": ["CoreML", "CPU"],
-      "accelerators": ["Apple GPU", "Apple Neural Engine (ANE)"],
-      "distribution": "CocoaPods / static framework with CoreML EP"
+      "status": {
+        "configured": "experimental",
+        "compiled": "blocked",
+        "packaged": "not-run",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "blocker": "Paired iPad Air M3 present; separate verified device ORT/CoreML bundle and signed clean consumer acceptance not supplied"
+    },
+    "ios_simulator_arm64": {
+      "status": {
+        "configured": "experimental",
+        "compiled": "blocked",
+        "packaged": "not-run",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "blocker": "Separate verified iOS simulator ORT bundle required; macOS/device artifacts rejected; simulator cannot prove ANE"
     },
     "android_arm64": {
-      "arch": "arm64-v8a",
-      "os": "android",
-      "min_api_level": 29,
-      "page_size_compatibility": "16kb_and_4kb",
-      "supported_providers": ["QNN", "CPU"],
-      "accelerators": ["Qualcomm Hexagon Tensor Processor (HTP NPU)"],
-      "distribution_notice": "QNN libraries (libQnnHtp.so) must be packaged per Qualcomm SDK distribution license or bundled with app."
+      "status": {
+        "configured": "experimental",
+        "compiled": "blocked",
+        "packaged": "not-run",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "blocker": "Pocket_DS/SG8275 present with vendor HTP; no verified application ORT QNN/HTP bundle+legal dependency inputs; all ELF/final APK/AAB16KB and HTP inference acceptance remain not-run"
+    },
+    "linux_x64": {
+      "status": {
+        "configured": "cpu-correctness-only",
+        "compiled": "not-run",
+        "packaged": "not-run",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "acceleration_claimed": false
+    },
+    "linux_arm64": {
+      "status": {
+        "configured": "cpu-correctness-only",
+        "compiled": "not-run",
+        "packaged": "not-run",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "acceleration_claimed": false
     }
-  }
+  },
+  "generated_at": "2026-11-04T11:23:10.813790+00:00",
+  "license": "MIT; ORT third-party notices are retained from the pinned upstream archive",
+  "source_fingerprint": "e622041ec5ffa81a8289b1963a06d4b50b5d41de769f49ca377347052807acd8"
 }

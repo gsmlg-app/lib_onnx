@@ -2,20 +2,17 @@ import 'dart:async';
 
 /// Options for an individual inference execution run.
 class RunOptions {
-  /// Unique request identifier for logging, diagnostics, and cancellation.
+  /// Caller correlation ID. Duplicates are allowed; native task IDs control cancellation.
   final int requestId;
 
-  /// Optional execution timeout.
+  /// Optional monotonic timeout including native submission/copying, queueing and run.
   final Duration? timeout;
 
   /// Optional cancellation token allowing cooperative cancellation of this run.
   final CancellationToken? cancellationToken;
 
-  RunOptions({
-    int? requestId,
-    this.timeout,
-    this.cancellationToken,
-  }) : requestId = requestId ?? _generateRequestId();
+  RunOptions({int? requestId, this.timeout, this.cancellationToken})
+    : requestId = requestId ?? _generateRequestId();
 
   static int _nextId = 1;
   static int _generateRequestId() => _nextId++;
@@ -24,19 +21,36 @@ class RunOptions {
 /// Token to cooperatively cancel an in-flight or queued inference run.
 class CancellationToken {
   bool _isCancelled = false;
-  final _completer = Completer<void>();
+  final _listeners = <void Function()>{};
+  Completer<void>? _completer;
 
-  /// Whether cancellation has been requested.
   bool get isCancelled => _isCancelled;
 
-  /// Future that completes when cancellation is requested.
-  Future<void> get onCancelled => _completer.future;
+  /// Compatibility notification. Inference uses removable listeners instead.
+  Future<void> get onCancelled {
+    final c = _completer ??= Completer<void>();
+    if (_isCancelled && !c.isCompleted) c.complete();
+    return c.future;
+  }
 
-  /// Request cancellation of the associated operation.
+  /// Returns an idempotent remover; completed tasks release all references.
+  void Function() addListener(void Function() listener) {
+    if (_isCancelled) {
+      listener();
+      return () {};
+    }
+    _listeners.add(listener);
+    return () => _listeners.remove(listener);
+  }
+
   void cancel() {
-    if (!_isCancelled) {
-      _isCancelled = true;
-      _completer.complete();
+    if (_isCancelled) return;
+    _isCancelled = true;
+    if (_completer case final c? when !c.isCompleted) c.complete();
+    final pending = _listeners.toList();
+    _listeners.clear();
+    for (final listener in pending) {
+      listener();
     }
   }
 }

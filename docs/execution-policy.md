@@ -1,50 +1,18 @@
-# 执行策略与硬件证据规范
+# Execution policy and evidence
 
-## 1. 执行策略的三大正交维度
+`providerPriority` is graph allocation order: all requested accelerators are registered in that order. CPU must be last; CPU-first order is explicitly rejected because ORT's implicit CPU EP is last. Only CPU, CoreML and QNN are in scope. There is no silent `break` after the first accelerator.
 
-根据架构决策，执行策略严禁被简化为单一的 `useGpu` 布尔开关，必须拆分为三个独立控制维度：
+- `strict`: requested EP initialization must succeed; `session.disable_cpu_ep_fallback=1` forbids ORT CPU nodes when an accelerator is configured. An unsupported Loop graph is a regression fixture. This constraint does not prohibit CoreML internal CPU computation.
+- `allowed`: EP initialization failure or unsupported graph nodes may use ORT CPU. Initialization failures are retained in diagnostics. Actual partial graph fallback is **unknown** when assignment data is unavailable, rather than falsely reported false.
+- `whitelistedOps`: **UnsupportedPolicy**. Fused/control/subgraph CPU assignments cannot be reliably enumerated by this implementation, so no whitelist guarantee is made.
+- CPU baseline is explicit execution, not fallback; its report is false.
 
-### 1.1 维度 1：Provider 优先级列表 (`providerPriority`)
-- 按照优先级从高到低声明允许参与模型执行的后端引擎。
-- 示例：`[ExecutionProvider.coreML, ExecutionProvider.cpu]` 表示优先尝试 CoreML，若 CoreML 不支持或回退允许则由 CPU 接管。
+Acceleration preference is independent of physical verification. Factories default to `HardwareRequirement.any`; `verifyHardware: true` opts into mandatory physical GPU/NPU evidence. The current backend has no per-run telemetry collector and rejects such requirements with `HardwareVerificationUnavailable`. CPU-only/hardware conflicts fail before loading. Extra options cannot replace protected policy/backend options.
 
-### 1.2 维度 2：CPU 回退策略 (`fallbackPolicy`)
-- **`FallbackPolicy.strict`**：
-  - 严格加速模式。一旦指定了加速 Provider，如果环境缺少该 Provider、或者模型图因算子不兼容无法在加速器上运行，**Session 创建或推理将立即报错并终止**，坚决不进行静默 CPU 降级。
-- **`FallbackPolicy.allowed`**：
-  - 宽松兼容模式。加速器初始化失败或模型中有部分算子不被支持时，ORT 允许子图回退到 CPU 执行。
-- **`FallbackPolicy.whitelistedOps`**：
-  - 白名单控制模式。仅允许特定控制算子或形状计算算子（如 `Shape`, `Gather`, `Unsqueeze`）在 CPU 运行，核心矩阵乘法必须由加速器承载。
+CoreML uses ORT 1.31.1's generic provider API with real option names: MLComputeUnits, MLProgram format, RequireStaticInputShapes, EnableOnSubgraphs, ModelCacheDirectory. CPUAndNeuralEngine permits both CPU and ANE. Cache directories are namespaced by the actual model/external-data identity and ordered providers/compilation options, because ORT's own URL/IO-name hash is insufficient for model identity.
 
-### 1.3 维度 3：硬件物理要求 (`hardwareRequirement`)
-- **`HardwareRequirement.any`**：任何可用的物理单元。
-- **`HardwareRequirement.gpu`**：强制要求设备必须包含物理 GPU，且参与模型计算。
-- **`HardwareRequirement.npu`**：强制要求设备必须具备专用 NPU（如 Apple Silicon 的 Apple Neural Engine，或高通骁龙 Hexagon HTP）。
+QNN uses `libQnnHtp.so`; CPU/GPU backend names are rejected. No Apple hardware probe is involved. Build capability comes only from ORT's actual provider enumeration. Missing provider, backend initialization, model load and verification failures retain their stage and ORT message. Android hardware/model acceptance still requires the matching QNN build and device run.
 
----
+Every runWithDiagnostics result owns its report and task ID. lastDiagnosticReport means the last successfully decoded completion on that Dart isolate, and cannot identify concurrent callers' results. Evidence records distinguish registration and Run completion, with source, scope, model manifest hash, runtime version and run/task identity where applicable. Dependency/device initialization, graph distribution, compute plan and physical utilization remain unknown unless measured. Compute plans are estimates, not usage.
 
-## 2. 能力与证据分级标准 (`EvidenceLevel`)
-
-为防止虚假宣传加速状态，`lib_onnx` 建立透明可复核的 6 级证据体系：
-
-| 等级名称 | 枚举代码 | 含义与判定依据 |
-|---|---|---|
-| **Unknown** | 0 | 未探测或尚未开始执行。 |
-| **None (CPU)** | 1 | 纯 CPU 执行，未检测到加速器参与或加速器被拒绝。 |
-| **EP Compiled** | 2 | 加速 Provider 动态库成功加载，SessionOptions 注册通过。 |
-| **Graph Partitioned** | 3 | ORT 已成功将 ONNX 计算图切分出专属于加速 EP 的子图。 |
-| **Hardware Observed** | 4 | 操作系统/驱动程序证实对应硬件引擎（GPU / ANE / NPU）实际接管并完成计算。 |
-| **Unverifiable** | 5 | 硬件已接入，但受限于驱动接口缺少逐次运行的硬件活动遥测信号（诚实标记，不伪造指标）。 |
-
----
-
-## 3. 诊断报告 (`DiagnosticReport`) 契约
-
-每次推理调用均生成结构化 `DiagnosticReport`，包含：
-- `activeProvider`：实际执行的核心后端；
-- `evidenceLevel`：对应的证据等级；
-- `durationUs`：端到端微秒级耗时；
-- `durationMs`：毫秒级耗时；
-- `hardwareDetails`：硬件芯片与驱动描述；
-- `fallbackOccurred`：布尔值，是否发生了 CPU 回退；
-- `modelHash`：用于溯源的模型校验哈希。
+An EP registered in a Session may still receive zero nodes. activeProvider is nullable, actualProviders may be empty or contain multiple measured providers, nodeDistribution is empty without assignment data, and fallbackOccurred is nullable. `hardwareObserved` is never inferred from chip names, CPUOnly, provider registration or Session creation. isAccelerated requires physical run observation. The legacy enum values remain available for compatibility; current reports do not manufacture unavailable evidence levels.

@@ -21,14 +21,16 @@ class OnnxTensor {
     required this.byteLength,
     required Uint8List data,
     ffi.Pointer<ffi.Void>? nativeHandle,
-  })  : _data = data,
-        _nativeHandle = nativeHandle;
+  }) : _data = data,
+       _nativeHandle = nativeHandle;
 
   /// Creates a tensor from float32 data.
   factory OnnxTensor.fromFloat32(List<int> shape, Float32List data) {
     _validateShapeAndLength(shape, data.length);
-    final byteData =
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final byteData = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
     return OnnxTensor._(
       shape: List.unmodifiable(shape),
       type: TensorType.float32,
@@ -58,8 +60,10 @@ class OnnxTensor {
   /// Creates a tensor from int64 data.
   factory OnnxTensor.fromInt64(List<int> shape, Int64List data) {
     _validateShapeAndLength(shape, data.length);
-    final byteData =
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final byteData = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
     return OnnxTensor._(
       shape: List.unmodifiable(shape),
       type: TensorType.int64,
@@ -72,8 +76,10 @@ class OnnxTensor {
   /// Creates a tensor from int32 data.
   factory OnnxTensor.fromInt32(List<int> shape, Int32List data) {
     _validateShapeAndLength(shape, data.length);
-    final byteData =
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final byteData = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
     return OnnxTensor._(
       shape: List.unmodifiable(shape),
       type: TensorType.int32,
@@ -98,8 +104,10 @@ class OnnxTensor {
   /// Creates a tensor from int8 data.
   factory OnnxTensor.fromInt8(List<int> shape, Int8List data) {
     _validateShapeAndLength(shape, data.length);
-    final byteData =
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final byteData = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
     return OnnxTensor._(
       shape: List.unmodifiable(shape),
       type: TensorType.int8,
@@ -134,27 +142,23 @@ class OnnxTensor {
     ffi.Pointer<ffi.Void>? nativeHandle,
   }) {
     final count = _calculateElementCount(shape);
+    if (rawBytes.length != count * type.elementSizeInBytes) {
+      throw ArgumentError(
+        'Native tensor byte length does not match shape/type',
+      );
+    }
     return OnnxTensor._(
       shape: List.unmodifiable(shape),
       type: type,
       elementCount: count,
       byteLength: rawBytes.lengthInBytes,
-      data: rawBytes,
+      data: Uint8List.fromList(rawBytes),
       nativeHandle: nativeHandle,
     );
   }
 
-  static int _calculateElementCount(List<int> shape) {
-    if (shape.isEmpty) return 0;
-    var count = 1;
-    for (final dim in shape) {
-      if (dim <= 0) {
-        throw ArgumentError('Invalid shape dimension: $dim in shape $shape');
-      }
-      count *= dim;
-    }
-    return count;
-  }
+  static int _calculateElementCount(List<int> shape) =>
+      checkedElementCount(shape);
 
   static void _validateShapeAndLength(List<int> shape, int actualCount) {
     final expected = _calculateElementCount(shape);
