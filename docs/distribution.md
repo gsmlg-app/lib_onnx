@@ -73,6 +73,21 @@ SDK native-assets 校验器检查 Mach-O/ELF 目标。Android 对每个提供的
 PT_LOAD，检查 AArch64 与 16 KB alignment。manifest 的 EP 声明不能代替运行时能力查询或
 设备初始化证据。自建包的许可证、签名和 transitive dependency 检查仍需实际完成。
 
+## GitHub release 预编译构件
+
+手动运行 `release.yml` 时，门禁通过后会固定待发布的 commit，在 macOS arm64、Linux x64、
+Linux arm64 runner 上通过 native-assets hook 编译 bridge 并运行测试。所有目标成功后才创建
+GitHub release，并上传 `lib_onnx-native-<target>-<version>.tar.gz`、源码归档和统一的
+`SHA256SUMS`。iOS/Android 仍需各自独立验证的输入，不在此预编译矩阵中。
+
+先用 `shasum -a 256 -c SHA256SUMS` 校验下载的全部 release 归档，再解压对应目标的 native
+归档，将解压目录配置为上文的 `native_bundle`。归档包含 bridge、固定版本 ORT、双方许可证、
+ORT third-party notices，以及带二进制角色和 SHA-256 的 `artifacts_manifest.json`。
+Pub 包仍保留源码和默认编译路线；预编译/测试通过不代表真机加速验收通过。
+
+本地可在 `dart test` 后运行 `python3 tools/package_native_bundle.py --target macos_arm64`
+生成同结构归档；工具拒绝目标不符、二进制散列不符或缺少许可证通知的 hook 输出。
+
 ## 平台构建与审核
 
 `native/CMakeLists.txt` 接受 `ORT_LIBRARY` 和 `ORT_INCLUDE_DIR`；跨平台必须显式提供目标库。

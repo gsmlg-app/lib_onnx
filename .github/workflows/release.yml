@@ -22,8 +22,82 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    name: Validate release inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Enforce release acceptance gate
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 tools/release_gate.py --version "$RELEASE_VERSION"
+
+      - name: Resolve release commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  precompile:
+    name: Precompile (${{ matrix.target }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: macos_arm64
+          - os: ubuntu-24.04
+            target: linux_x64
+          - os: ubuntu-24.04-arm
+            target: linux_arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.13.7'
+
+      - name: Install package dependencies
+        run: dart pub get --no-example
+
+      - name: Build native assets and run tests
+        run: |
+          dart test
+          python3 tools/test_distribution.py
+
+      - name: Package precompiled native bundle
+        env:
+          NATIVE_TARGET: ${{ matrix.target }}
+        run: python3 tools/package_native_bundle.py --target "$NATIVE_TARGET" --output build/release
+
+      - name: Upload precompiled native bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib_onnx-native-${{ matrix.target }}
+          path: build/release/*.tar.gz
+          if-no-files-found: error
+
   release:
     name: Build and publish GitHub release
+    needs: [prepare, precompile]
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -31,18 +105,13 @@ jobs:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.git_ref }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Setup Git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Enforce release acceptance gate
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: python3 tools/release_gate.py --version "$RELEASE_VERSION"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -108,12 +177,22 @@ jobs:
       - name: Validate pub package (dry-run)
         run: flutter pub publish --dry-run --ignore-warnings
 
-      - name: Create release artifacts
+      - name: Create source release artifact
         env:
           VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist/release
           dart pub publish --to-archive="dist/release/lib_onnx-source-${VERSION}.tar.gz"
+
+      - name: Download precompiled native bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lib_onnx-native-*
+          merge-multiple: true
+          path: dist/release
+
+      - name: Checksum release artifacts
+        run: |
           (
             cd dist/release
             sha256sum * > SHA256SUMS

@@ -1,7 +1,10 @@
 """Tooling regressions; these synthetic structures are not Android acceptance."""
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import struct
+import tarfile
 import tempfile
 import zipfile
 import unittest
@@ -18,6 +21,7 @@ def module(name):
 
 audit = module('audit_android_pages')
 gate = module('release_gate')
+native_bundle = module('package_native_bundle')
 
 
 class DistributionTests(unittest.TestCase):
@@ -64,6 +68,72 @@ class DistributionTests(unittest.TestCase):
         manifest = {'package_version': '0.2.0-dev.1', 'bridge_abi_version': 2, 'ort_version': '1.31.1',
                     'software': {'status': 'passed', 'evidence': ['regression-log']}}
         self.assertEqual(gate.check(manifest, '0.2.0-dev.1', stable=False), [])
+
+
+class NativeBundleTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        (self.root / 'native').mkdir()
+        (self.root / 'pubspec.yaml').write_text('version: 0.2.0-dev.1\n')
+        (self.root / 'LICENSE').write_text('lib_onnx license')
+        (self.root / 'native/ort_artifacts.json').write_text(json.dumps({
+            'targets': {'linux_x64': {'sha256': 'a' * 64}}}))
+        self.build = self.root / 'hook-output'
+        self.build.mkdir()
+        for name in ('liblib_onnx_bridge.so', 'libonnxruntime.so.1',
+                     'onnxruntime-LICENSE', 'onnxruntime-ThirdPartyNotices.txt'):
+            (self.build / name).write_bytes(name.encode())
+        self.manifest = {
+            'manifest_version': 2, 'target': 'linux_x64',
+            'bridge_abi_version': 2, 'ort_version': '1.31.1', 'archive_sha256': 'a' * 64,
+            'status': {'compiled': 'passed', 'packaged': 'not-run', 'device': 'not-run'},
+            'binaries': [{'name': name, 'sha256': hashlib.sha256((self.build / name).read_bytes()).hexdigest()}
+                         for name in ('liblib_onnx_bridge.so', 'libonnxruntime.so.1')],
+        }
+        self.receipt = self.build / 'artifacts_manifest.json'
+        self.receipt.write_text(json.dumps(self.manifest))
+        output = self.root / '.dart_tool/hooks_runner/lib_onnx/test/output.json'
+        output.parent.mkdir(parents=True)
+        output.write_text(json.dumps({'assets': [{'encoding': {
+            'id': 'package:lib_onnx/onnxruntime', 'file': str(self.build / 'libonnxruntime.so.1')}}]}))
+
+    def test_bundle_has_verified_binaries_roles_and_notices(self):
+        result = native_bundle.package_bundle(self.root, 'linux_x64', self.root / 'dist')
+        self.assertEqual(result.name, 'lib_onnx-native-linux_x64-0.2.0-dev.1.tar.gz')
+        with tarfile.open(result) as archive:
+            self.assertEqual(set(archive.getnames()), {
+                'liblib_onnx_bridge.so', 'libonnxruntime.so.1', 'artifacts_manifest.json',
+                'lib_onnx-LICENSE', 'onnxruntime-LICENSE', 'onnxruntime-ThirdPartyNotices.txt'})
+            self.assertTrue(all(item.isfile() for item in archive.getmembers()))
+            manifest = json.load(archive.extractfile('artifacts_manifest.json'))
+            self.assertEqual(manifest['package_version'], '0.2.0-dev.1')
+            self.assertEqual(manifest['source_fingerprint'], gate.source_fingerprint(self.root))
+            self.assertEqual(manifest['status']['packaged'], 'passed')
+            self.assertEqual(manifest['status']['device'], 'not-run')
+            self.assertEqual({item['role'] for item in manifest['binaries']}, {'bridge', 'runtime'})
+            for item in manifest['binaries']:
+                self.assertEqual(hashlib.sha256(archive.extractfile(item['name']).read()).hexdigest(), item['sha256'])
+
+    def test_wrong_target_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'does not match macos_arm64'):
+            native_bundle.package_bundle(self.root, 'macos_arm64', self.root / 'dist')
+
+    def test_modified_bridge_is_rejected(self):
+        (self.build / 'liblib_onnx_bridge.so').write_bytes(b'corrupted bridge')
+        with self.assertRaisesRegex(ValueError, 'SHA256 mismatch'):
+            native_bundle.package_bundle(self.root, 'linux_x64', self.root / 'dist')
+
+    def test_modified_runtime_is_rejected(self):
+        (self.build / 'libonnxruntime.so.1').write_bytes(b'corrupted runtime')
+        with self.assertRaisesRegex(SystemExit, 'No verified ORT hook asset'):
+            native_bundle.package_bundle(self.root, 'linux_x64', self.root / 'dist')
+
+    def test_missing_notices_are_rejected(self):
+        (self.build / 'onnxruntime-ThirdPartyNotices.txt').unlink()
+        with self.assertRaisesRegex(ValueError, 'Missing native bundle file'):
+            native_bundle.package_bundle(self.root, 'linux_x64', self.root / 'dist')
 
 
 if __name__ == '__main__':
