@@ -2,6 +2,10 @@
 
 Date:2026-11-04. Reviewed baseline:7af242db423c6f5ef992048b641bf6a23be0fbd9. Changes remain on main; no branches/worktrees or historical tags were created or rewritten. The supplied repair prompt is preserved as an unrelated untracked input and excluded from delivery.
 
+This is the historical candidate repair report. Subsequent stable0.2.0 CPU-only
+acceptance is recorded in [stable-0.2.0.md](stable-0.2.0.md); accelerator/model
+gates below remain open.
+
 **Software repair is implemented and verified as a0.2.0-dev.1 /ABI2 candidate. Platform accelerator release acceptance and Qwen acceptance remain open.** No new stable package/release is published. For GSMLG, this is suitable for scoped macOS candidate integration/safety evaluation, not production GPU/NPU/Qwen acceptance.
 
 ## Findings, fixes and regressions

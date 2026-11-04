@@ -15,3 +15,12 @@ Historical correction: the previous report inferred "Hardware Observed" from App
 The clean consumer runs a different102-byte Identity fixture, file SHA256 `d3dc6ebdfff0c3b32a814eb77868bda8f4cdb9dc1538b6d1878560613bfb21cf`, identity `d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515`. Neither fixture establishes Qwen support. No Qwen3-Embedding-0.6B backend/profile has passed actual model or hardware acceptance.
 
 Inventory commands: `xcrun devicectl list devices --timeout 5`, `adb devices -l`, `adb -s 10.100.8.115:5555 shell getprop ro.soc.model`, `getprop ro.product.cpu.abi`, `getconf PAGE_SIZE`, and read-only vendor-library checks. Presence of a vendor HTP library is not permission to redistribute it and does not prove an application initialized that backend.
+
+## Stable 0.2.0 CPU acceptance — 2026-11-05
+
+The MacBook Pro / MacBookPro18,4 / Apple M1 Max / 32 GB / macOS 27.0.1 host
+was checked again for bridge 0.2.0. Real CPU MLP inference, the full software
+suite, and independently launched clean CLI and Flutter release consumers
+passed. This establishes the macOS arm64 CPU-only stable target. GPU/ANE,
+Qwen, iOS/Android and Linux device acceptance retain the separate limitations
+above. Commands, hashes and receipts are in [stable-0.2.0.md](../reviews/stable-0.2.0.md).

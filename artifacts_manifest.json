@@ -1,16 +1,18 @@
 {
   "manifest_version": 2,
   "package": "lib_onnx",
-  "package_version": "0.2.0-dev.1",
+  "package_version": "0.2.0",
   "bridge_abi_version": 2,
   "ort_version": "1.31.1",
-  "claimed_supported_targets": [],
+  "claimed_supported_targets": [
+    "macos_arm64"
+  ],
   "software": {
     "status": "passed",
     "evidence": [
-      "docs/reviews/runtime-acceleration-remediation.md",
-      "docs/reviews/evidence/software-checks.txt",
-      "docs/reviews/evidence/packaging-clean-consumer.json"
+      "docs/reviews/stable-0.2.0.md",
+      "docs/reviews/evidence/stable-0.2.0-software.log",
+      "docs/reviews/evidence/stable-0.2.0-consumer.json"
     ]
   },
   "targets": {
@@ -20,7 +22,7 @@
         "compiled": "passed",
         "packaged": "passed",
         "clean_consumer": "passed",
-        "device": "not-run"
+        "device": "passed"
       },
       "hardware_observed": "not-run",
       "acceleration_claimed": false,
@@ -33,7 +35,7 @@
       "binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "321a6fc257ba331122db0f4524c0c8050ee0b59a6a379874707c0284c7f8eb03",
+          "sha256": "37783cb1ed1eccd0cdd8ba24415acfb1121d9b7b91cf40941d4f8f735046fe26",
           "role": "bridge",
           "checksum_status": "verified-local-file"
         },
@@ -45,16 +47,30 @@
         }
       ],
       "evidence": [
-        "docs/reviews/runtime-acceleration-remediation.md"
+        "docs/reviews/stable-0.2.0.md",
+        "docs/reviews/evidence/stable-0.2.0-software.log",
+        "docs/reviews/evidence/stable-0.2.0-consumer.json",
+        "docs/reviews/evidence/stable-0.2.0-consumer.log"
       ],
-      "device_software_check": "passed: real host MLP/CoreML and release launch; physical GPU/ANE acceptance not-run",
+      "device_software_check": "passed: bridge 0.2.0 CPU MLP, JIT, CLI release and Flutter release consumer inference; GPU/ANE acceptance not-run",
       "signature_status": "ad-hoc signatures verified; Developer ID/notarization not-run",
-      "consumer_receipt": "docs/reviews/evidence/packaging-clean-consumer.json",
+      "consumer_receipt": "docs/reviews/evidence/stable-0.2.0-consumer.json",
       "model_evidence": [
-        "docs/reviews/evidence/coreml-all.txt",
-        "docs/reviews/evidence/coreml-gpu.txt",
-        "docs/reviews/evidence/coreml-ne.txt",
-        "docs/reviews/evidence/coreml-cpu.txt"
+        "docs/reviews/evidence/stable-0.2.0-software.log"
+      ],
+      "accepted_execution_providers": [
+        "CPUExecutionProvider"
+      ],
+      "device_acceptance_scope": "CPU inference on physical Apple M1 Max / MacBookPro18,4; macOS 27.0.1; CLI and Flutter release consumers independently launched",
+      "consumer_binaries": [
+        {
+          "name": "liblib_onnx_bridge.dylib",
+          "sha256": "8bd4289a780c7ce9568f02607d5b44e1bff061873068b499d9e6fe0f35bd42a4"
+        },
+        {
+          "name": "libonnxruntime.1.dylib",
+          "sha256": "ff2ef112c59c1e0bbcf00113b3fbfec4831337f007295ca140a65bde5cd210c2"
+        }
       ]
     },
     "ios_arm64": {
@@ -108,7 +124,7 @@
       "acceleration_claimed": false
     }
   },
-  "generated_at": "2026-11-04T11:23:10.813790+00:00",
+  "generated_at": "2026-11-04T16:57:25.152796+00:00",
   "license": "MIT; ORT third-party notices are retained from the pinned upstream archive",
-  "source_fingerprint": "e622041ec5ffa81a8289b1963a06d4b50b5d41de769f49ca377347052807acd8"
+  "source_fingerprint": "13f0f367d10efef7542001419427e8b01eb4df049607ed4fc25e3b95625b8aa0"
 }

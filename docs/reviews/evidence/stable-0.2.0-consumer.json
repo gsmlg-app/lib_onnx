@@ -1,0 +1,50 @@
+{
+  "status": "passed",
+  "workspace": "/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5",
+  "started_at": "2026-11-04T16:54:58.231167+00:00",
+  "source": "dart pub publish --to-archive (exact publish payload)",
+  "hardware_acceptance": "not-run",
+  "source_fingerprint": "13f0f367d10efef7542001419427e8b01eb4df049607ed4fc25e3b95625b8aa0",
+  "archive_sha256": "2fa82e1bad7a057cb59cce7d797aed4b26b073b534f152fa34e8dc2c70c12a2b",
+  "ort_archive_sha256": "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f",
+  "resolved_package": "file:///var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/pub-cache/hosted/localhost%255852080/lib_onnx-0.2.0",
+  "dart_jit_log": "Running build hooks...clang: warning: overriding '-mmacos-version-min=12' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]\n\n\nRunning build hooks...{\"status\":\"passed\",\"fixture\":\"identity_float32\",\"output\":[1.0,2.0,3.0,4.0],\"modelHash\":\"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515\",\"actualProviders\":[\"CPU\"],\"hardwareObserved\":false,\"bridge\":\"0.2.0\",\"ort\":\"1.31.1\",\"compiledProviders\":[\"CoreMLExecutionProvider\",\"WebGpuExecutionProvider\",\"CPUExecutionProvider\"],\"diagnostic\":\"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.09 ms, fallback: false)\",\"hardware_acceptance\":\"not-run\",\"qwen_acceptance\":\"not-run\"}\n",
+  "dart_release_log": "{\"status\":\"passed\",\"fixture\":\"identity_float32\",\"output\":[1.0,2.0,3.0,4.0],\"modelHash\":\"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515\",\"actualProviders\":[\"CPU\"],\"hardwareObserved\":false,\"bridge\":\"0.2.0\",\"ort\":\"1.31.1\",\"compiledProviders\":[\"CoreMLExecutionProvider\",\"WebGpuExecutionProvider\",\"CPUExecutionProvider\"],\"diagnostic\":\"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.086 ms, fallback: false)\",\"hardware_acceptance\":\"not-run\",\"qwen_acceptance\":\"not-run\"}\n",
+  "dart_release": "passed",
+  "bundled_libraries": [
+    {
+      "name": "liblib_onnx_bridge.dylib",
+      "sha256": "8bd4289a780c7ce9568f02607d5b44e1bff061873068b499d9e6fe0f35bd42a4"
+    },
+    {
+      "name": "libonnxruntime.1.dylib",
+      "sha256": "ff2ef112c59c1e0bbcf00113b3fbfec4831337f007295ca140a65bde5cd210c2"
+    }
+  ],
+  "flutter_release": {
+    "status": "passed",
+    "fixture": "identity_float32",
+    "output": [
+      1.0,
+      2.0,
+      3.0,
+      4.0
+    ],
+    "modelHash": "d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515",
+    "actualProviders": [
+      "CPU"
+    ],
+    "hardwareObserved": false,
+    "bridge": "0.2.0",
+    "ort": "1.31.1",
+    "compiledProviders": [
+      "CoreMLExecutionProvider",
+      "WebGpuExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "diagnostic": "DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.065 ms, fallback: false)",
+    "hardware_acceptance": "not-run",
+    "qwen_acceptance": "not-run"
+  },
+  "completed_at": "2026-11-04T16:56:21.807378+00:00"
+}

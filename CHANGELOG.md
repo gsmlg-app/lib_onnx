@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.2.0-dev.1 (unreleased candidate)
+## 0.2.0 (2026-11-05)
+
+- Stable CPU inference on macOS arm64 with bridge ABI2 and ONNX Runtime 1.31.1. CoreML/QNN, iOS/Android and full Qwen acceptance remain experimental or incomplete.
+- Release workflows precompile macOS arm64 and Linux x64/arm64 bundles, retain license notices and binary manifests, and publish source archives with SHA-256 checksums. Linux bundles remain CPU correctness inputs outside the stable platform claim.
+- Updated package, example and native bridge versions together; stable publication retains the platform acceptance gate.
+
+## 0.2.0-dev.1 (2026-11-04)
 
 - **Breaking:** bridge ABI2 and Dart3.10+ native-assets packaging; pure Dart core no longer depends on Flutter. Old bridges/ORT mismatches are rejected.
 - Checked tensor sizes, scalars/empty tensors/arbitrary ranks, complete partial-result cleanup, task-owned input copies and retained result handles.

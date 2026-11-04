@@ -1,8 +1,8 @@
 # Compatibility
 
-| Component | Candidate requirement / verified toolchain |
+| Component | Requirement / verified toolchain |
 |---|---|
-| Bridge | ABI2; package0.2.0-dev.1; old bridges rejected |
+| Bridge | ABI2; package0.2.0; old bridges rejected |
 | ORT | Exact1.31.1 / C API31; checksummed official archives |
 | Dart | >=3.10<4, for native-assets hooks; tested3.13.7 |
 | Flutter | Hook-capable toolchain; tested3.47.9; example minimum3.38 |

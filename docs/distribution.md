@@ -1,6 +1,6 @@
-# 原生构建与消费端验证（ABI 2 候选版本）
+# 原生构建与消费端验证（ABI 2）
 
-`0.2.0-dev.1` 使用 Dart native-assets build hooks；核心包不依赖 Flutter engine。
+`0.2.0` 使用 Dart native-assets build hooks；核心包不依赖 Flutter engine。
 最低 Dart 为 3.10，实际验证工具链见本轮 remediation 记录（Dart 3.13.7 / Flutter
 3.47.9）。普通消费者无需 CWD、Homebrew、工作区 path dependency 或手动复制 dylib。
 
@@ -14,7 +14,7 @@ C 工具链、tar 和网络；后续复用校验过的归档缓存。加载时�
 
 | 目标 | 默认构建输入 | 本轮声明 |
 |---|---|---|
-| macOS arm64、macOS 14+ | 官方 `onnxruntime-osx-arm64-1.31.1.tgz`，CoreML/CPU | 候选；实际构件/consumer 证据与硬件验收分开记录 |
+| macOS arm64、macOS 14+ | 官方 `onnxruntime-osx-arm64-1.31.1.tgz`，CoreML/CPU | CPU 推理为 stable；CoreML 仍为 experimental，GPU/ANE 观测未完成 |
 | Linux x64/arm64 | 对应官方 Linux 1.31.1 归档 | 仅 CPU 正确性/安全测试路线，不是 Linux GPU 支持 |
 | iOS 真机 arm64 | 需要单独 iPhoneOS ORT/CoreML 构件 | experimental；未提供构件时明确拒绝构建 |
 | iOS 模拟器 | 需要单独 iPhoneSimulator 构件 | experimental；不能以 macOS dylib 或真机构件替代 |
@@ -145,7 +145,9 @@ ORT MIT license 和 ThirdPartyNotices 随固定归档保留，最终 app 分发�
 `python3 tools/release_gate.py`。软件测试必须有证据；stable 额外要求每个显式声明的平台
 编译、打包、干净消费者、设备验收通过，并有真实 binary hashes。宣称加速还需硬件观测。
 未完成的平台不列为 production-ready；仅跳过真机测试不能使门禁变绿。候选 GitHub release
-使用 prerelease 标识；push 本身只触发 CI，不发布 stable。本任务不发布新 stable。
+使用 prerelease 标识；push 本身只触发 CI，不发布 stable。`0.2.0` 的 stable 声明仅覆盖
+macOS arm64 CPU 推理；独立主机验收和实际二进制散列见
+[stable-0.2.0.md](reviews/stable-0.2.0.md)，不把 CPU 验收提升为 GPU/NPU 或其他平台验收。
 
 Pub 的 exact-pin、`docs/`/`tools/` 命名及工作区修改等 warning 保留于日志；独立 analyzer、
 原生回归与消费端测试必须通过。`pub publish --dry-run` 不能替代上述原生集成验收。

@@ -1,12 +1,12 @@
 # lib_onnx
 
-Dart/Flutter → thin C ABI → ONNX Runtime 1.31.1, with explicit CoreML and QNN HTP policies. The current candidate is **0.2.0-dev.1 / bridge ABI 2**. GPU/NPU platform acceptance and Qwen acceptance remain open; this candidate is not a production acceleration release.
+Dart/Flutter → thin C ABI → ONNX Runtime 1.31.1. **0.2.0 / bridge ABI 2** provides stable CPU inference on macOS arm64. CoreML and QNN HTP integration remain experimental; GPU/NPU platform acceptance and Qwen acceptance remain open. See the [stable release acceptance scope](docs/reviews/stable-0.2.0.md).
 
 The implemented native-assets route builds and bundles the macOS arm64 bridge and pinned ORT dependency without CWD/Homebrew searches or copying dylibs. It requires Dart 3.10+, a C11 compiler, and macOS 14+. Linux artifacts are for CPU correctness checks. iOS device/simulator and Android QNN bundles are separate experimental inputs; see [distribution](docs/distribution.md).
 
 ```yaml
 dependencies:
-  lib_onnx: 0.2.0-dev.1 # candidate source; not yet published by this repair
+  lib_onnx: ^0.2.0
 ```
 
 ```dart
@@ -19,10 +19,7 @@ Future<void> main() async {
     final session = await InferenceSession.loadFile(
       'mlp_smoke.onnx', // tools/make_test_models.py
       runtime: runtime,
-      options: SessionOptions.appleSilicon(
-        preferAne: true,
-        allowCpuFallback: false,
-      ),
+      options: SessionOptions.cpuOnly(),
     );
     final input = OnnxTensor.fromFloat32(
       [1, 4], Float32List.fromList([1, 2, 3, 4]),

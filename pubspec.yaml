@@ -1,6 +1,6 @@
 name: lib_onnx
 description: ONNX Runtime inference for Dart and Flutter with explicit execution policies and experimental CoreML and QNN integration.
-version: 0.2.0-dev.1
+version: 0.2.0
 repository: https://github.com/gsmlg-app/lib_onnx
 
 environment:

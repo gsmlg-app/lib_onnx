@@ -1,6 +1,6 @@
-# Migration from0.1 to0.2.0-dev.1
+# Migration from0.1 to0.2.0
 
-This candidate changes ABI and public diagnostic/close semantics and therefore is not a patch to0.1.
+Version0.2 changes ABI and public diagnostic/close semantics and therefore is not a patch to0.1.
 
 - Rebuild/bundle bridge ABI2 with exact ORT1.31.1. Loader rejects ABI1, missing ABI symbols and mismatched ORT versions. Regenerate Dart bindings with `python3 tools/generate_bindings.py` then `dart format lib/src/ffi`.
 - Use `await OnnxRuntime.createAsync()` and `await InferenceSession.loadFile/loadBytes(...)`. Former fromFile/fromBytes factories are deprecated blocking aliases; fromFileSync/fromBytesSync explicitly preserve blocking worker-side use. create() is also synchronous initialization.

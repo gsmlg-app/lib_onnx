@@ -1,0 +1,497 @@
+
+$ dart pub publish --to-archive=/Volumes/Storage/gsmlg-app/lib_onnx/build/stable-0.2.0/consumer/lib_onnx-candidate.tar.gz
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 103.0.0 (111.0.0 available)
+  analyzer 13.3.0 (14.7.0 available)
+  crypto 3.0.7 (3.0.8 available)
+  package_config 2.2.0 (3.0.0 available)
+  test 1.31.1 (1.33.0 available)
+  test_api 0.7.12 (0.7.15 available)
+  test_core 0.6.18 (0.6.21 available)
+Got dependencies!
+7 packages have newer versions incompatible with dependency constraints.
+Try `dart pub outdated` for more information.
+Publishing lib_onnx 0.2.0 to https://pub.dev:
+├── CHANGELOG.md (3 KB)
+├── LICENSE (1 KB)
+├── README.md (3 KB)
+├── artifacts_manifest.json (3 KB)
+├── docs
+│   ├── architecture.md (3 KB)
+│   ├── backend-support.md (1 KB)
+│   ├── compatibility.md (1 KB)
+│   ├── distribution.md (9 KB)
+│   ├── execution-policy.md (3 KB)
+│   ├── implementation-plan.md (1 KB)
+│   ├── migration-0.2.md (2 KB)
+│   ├── model-profiles.md (7 KB)
+│   ├── reviews
+│   │   ├── evidence
+│   │   │   ├── coreml-all.txt (<1 KB)
+│   │   │   ├── coreml-cpu.txt (<1 KB)
+│   │   │   ├── coreml-gpu.txt (<1 KB)
+│   │   │   ├── coreml-ne.txt (<1 KB)
+│   │   │   ├── cpu-baseline.txt (<1 KB)
+│   │   │   ├── packaging-analyze.log (<1 KB)
+│   │   │   ├── packaging-artifact-paths.json (<1 KB)
+│   │   │   ├── packaging-bundle-inspection.log (6 KB)
+│   │   │   ├── packaging-clean-consumer.json (3 KB)
+│   │   │   ├── packaging-clean-consumer.log (24 KB)
+│   │   │   ├── packaging-cmake-target14.log (1 KB)
+│   │   │   ├── packaging-flutter-launch.json (<1 KB)
+│   │   │   ├── packaging-hook-rejections.json (<1 KB)
+│   │   │   ├── packaging-normal-hook.log (<1 KB)
+│   │   │   ├── packaging-tool-tests.log (<1 KB)
+│   │   │   ├── qnn-unavailable-on-mac.txt (<1 KB)
+│   │   │   └── software-checks.txt (3 KB)
+│   │   ├── runtime-acceleration-remediation.md (13 KB)
+│   │   └── stable-0.2.0.md (<1 KB)
+│   └── validation
+│       ├── benchmark_report.md (1 KB)
+│       └── device_matrix.md (2 KB)
+├── example
+│   ├── assets
+│   │   └── mlp_smoke.onnx (<1 KB)
+│   ├── lib
+│   │   └── main.dart (7 KB)
+│   └── pubspec.yaml (<1 KB)
+├── hook
+│   └── build.dart (10 KB)
+├── lib
+│   ├── lib_onnx.dart (1 KB)
+│   └── src
+│       ├── adapter
+│       │   ├── embedding_adapter.dart (5 KB)
+│       │   └── model_manifest.dart (6 KB)
+│       ├── diagnostics
+│       │   ├── diagnostic_report.dart (2 KB)
+│       │   ├── hardware_evidence.dart (1 KB)
+│       │   └── onnx_exception.dart (<1 KB)
+│       ├── ffi
+│       │   ├── bindings.dart (18 KB)
+│       │   ├── c_structures.dart (<1 KB)
+│       │   └── native_library.dart (2 KB)
+│       ├── provider
+│       │   ├── execution_policy.dart (6 KB)
+│       │   └── execution_provider.dart (2 KB)
+│       ├── runtime
+│       │   └── onnx_runtime.dart (5 KB)
+│       ├── session
+│       │   ├── inference_session.dart (21 KB)
+│       │   ├── model_identity.dart (4 KB)
+│       │   ├── run_options.dart (1 KB)
+│       │   └── session_options.dart (2 KB)
+│       └── tensor
+│           ├── onnx_tensor.dart (6 KB)
+│           └── tensor_type.dart (2 KB)
+├── lib_onnx-implementation-plan.md (19 KB)
+├── native
+│   ├── CMakeLists.txt (2 KB)
+│   ├── Makefile (1 KB)
+│   ├── include
+│   │   └── lib_onnx.h (8 KB)
+│   ├── ort_artifacts.json (1 KB)
+│   ├── src
+│   │   ├── lib_onnx_bridge.c (42 KB)
+│   │   └── library_locator.c (<1 KB)
+│   ├── tests
+│   │   ├── byte_length_test.c (<1 KB)
+│   │   ├── lifecycle_test.dart (2 KB)
+│   │   └── runtime_test.c (10 KB)
+│   └── third_party
+│       └── onnxruntime
+│           ├── LICENSE (1 KB)
+│           ├── ORT_VERSION (<1 KB)
+│           ├── ThirdPartyNotices.txt (330 KB)
+│           └── include
+│               ├── core
+│               │   └── providers
+│               │       ├── custom_op_context.h (<1 KB)
+│               │       └── resource.h (<1 KB)
+│               ├── coreml_provider_factory.h (5 KB)
+│               ├── cpu_provider_factory.h (<1 KB)
+│               ├── onnxruntime_c_api.h (412 KB)
+│               ├── onnxruntime_cxx_api.h (171 KB)
+│               ├── onnxruntime_cxx_inline.h (161 KB)
+│               ├── onnxruntime_env_config_keys.h (1 KB)
+│               ├── onnxruntime_ep_c_api.h (161 KB)
+│               ├── onnxruntime_ep_device_ep_metadata_keys.h (3 KB)
+│               ├── onnxruntime_error_code.h (2 KB)
+│               ├── onnxruntime_experimental_c_api.h (2 KB)
+│               ├── onnxruntime_experimental_c_api.inc (2 KB)
+│               ├── onnxruntime_experimental_cxx_api.h (4 KB)
+│               ├── onnxruntime_float16.h (17 KB)
+│               ├── onnxruntime_lite_custom_op.h (60 KB)
+│               ├── onnxruntime_run_options_config_keys.h (2 KB)
+│               ├── onnxruntime_session_options_config_keys.h (59 KB)
+│               ├── onnxruntime_type_conversion.h (1 KB)
+│               ├── provider_options.h (<1 KB)
+│               └── webgpu_provider_factory.h (<1 KB)
+├── pubspec.yaml (<1 KB)
+├── test
+│   ├── embedding_adapter_test.dart (6 KB)
+│   ├── execution_policy_test.dart (2 KB)
+│   ├── fixtures
+│   │   ├── identity_bool.onnx (<1 KB)
+│   │   ├── identity_bool_empty.onnx (<1 KB)
+│   │   ├── identity_bool_rank20.onnx (<1 KB)
+│   │   ├── identity_bool_scalar.onnx (<1 KB)
+│   │   ├── identity_float16.onnx (<1 KB)
+│   │   ├── identity_float16_empty.onnx (<1 KB)
+│   │   ├── identity_float16_rank20.onnx (<1 KB)
+│   │   ├── identity_float16_scalar.onnx (<1 KB)
+│   │   ├── identity_float32.onnx (<1 KB)
+│   │   ├── identity_float32_empty.onnx (<1 KB)
+│   │   ├── identity_float32_rank20.onnx (<1 KB)
+│   │   ├── identity_float32_scalar.onnx (<1 KB)
+│   │   ├── identity_int32.onnx (<1 KB)
+│   │   ├── identity_int32_empty.onnx (<1 KB)
+│   │   ├── identity_int32_rank20.onnx (<1 KB)
+│   │   ├── identity_int32_scalar.onnx (<1 KB)
+│   │   ├── identity_int64.onnx (<1 KB)
+│   │   ├── identity_int64_empty.onnx (<1 KB)
+│   │   ├── identity_int64_rank20.onnx (<1 KB)
+│   │   ├── identity_int64_scalar.onnx (<1 KB)
+│   │   ├── identity_int8.onnx (<1 KB)
+│   │   ├── identity_int8_empty.onnx (<1 KB)
+│   │   ├── identity_int8_rank20.onnx (<1 KB)
+│   │   ├── identity_int8_scalar.onnx (<1 KB)
+│   │   ├── identity_uint8.onnx (<1 KB)
+│   │   ├── identity_uint8_empty.onnx (<1 KB)
+│   │   ├── identity_uint8_rank20.onnx (<1 KB)
+│   │   ├── identity_uint8_scalar.onnx (<1 KB)
+│   │   ├── long_loop.onnx (<1 KB)
+│   │   ├── mlp_smoke.onnx (<1 KB)
+│   │   ├── partial_sequence.onnx (<1 KB)
+│   │   └── unsupported_double.onnx (<1 KB)
+│   ├── model_identity_test.dart (1 KB)
+│   ├── model_manifest_test.dart (4 KB)
+│   ├── native_library_test.dart (1 KB)
+│   ├── native_session_test.dart (10 KB)
+│   ├── stress_and_lifecycle_test.dart (1 KB)
+│   └── tensor_test.dart (3 KB)
+└── tools
+    ├── audit_android_pages.py (3 KB)
+    ├── export_embedding.py (13 KB)
+    ├── generate_artifacts_manifest.py (3 KB)
+    ├── generate_bindings.py (2 KB)
+    ├── make_test_models.py (7 KB)
+    ├── package_native_bundle.py (2 KB)
+    ├── prepare_qwen.py (6 KB)
+    ├── qwen-validation-requirements.txt (<1 KB)
+    ├── release_gate.py (3 KB)
+    ├── resolve_hook_ort.py (1 KB)
+    ├── run_dart_native_tests.sh (1 KB)
+    ├── run_native_tests.sh (<1 KB)
+    ├── test_distribution.py (6 KB)
+    ├── test_qwen_profile.py (2 KB)
+    ├── validate_mlp.dart (3 KB)
+    ├── validate_qwen.dart (11 KB)
+    ├── verify_consumer.py (15 KB)
+    └── verify_hook_inputs.py (2 KB)
+
+Total compressed archive size: 364 KB.
+Validating package...
+Package validation found the following 10 potential issues:
+* 11 checked-in files are modified in git.
+
+  Usually you want to publish from a clean git state.
+
+  Consider committing these files or reverting the changes.
+
+  Modified files:
+
+  CHANGELOG.md
+  README.md
+  docs/backend-support.md
+  docs/compatibility.md
+  docs/distribution.md
+  docs/implementation-plan.md
+  docs/migration-0.2.md
+  example/pubspec.yaml
+  native/src/lib_onnx_bridge.c
+  pubspec.yaml
+  ...
+
+  Run `git status` for more information.
+
+
+* Your dependency on "ffi" should allow more than one version. For example:
+
+  dependencies:
+    ffi: ^2.2.0
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "ffi".
+
+* Your dependency on "meta" should allow more than one version. For example:
+
+  dependencies:
+    meta: ^1.19.0
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "meta".
+
+* Your dependency on "path" should allow more than one version. For example:
+
+  dependencies:
+    path: ^1.9.1
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "path".
+
+* Your dependency on "crypto" should allow more than one version. For example:
+
+  dependencies:
+    crypto: ^3.0.7
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "crypto".
+
+* Your dependency on "hooks" should allow more than one version. For example:
+
+  dependencies:
+    hooks: ^2.2.0
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "hooks".
+
+* Your dependency on "code_assets" should allow more than one version. For example:
+
+  dependencies:
+    code_assets: ^2.1.0
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "code_assets".
+
+* Your dependency on "native_toolchain_c" should allow more than one version. For example:
+
+  dependencies:
+    native_toolchain_c: ^0.19.5
+
+  Constraints that are too tight will make it difficult for people to use your package
+  along with other packages that also depend on "native_toolchain_c".
+
+* Rename the top-level "docs" directory to "doc".
+  The Pub layout convention is to use singular directory names.
+  Plural names won't be correctly identified by Pub and other tools.
+  See https://dart.dev/tools/pub/package-layout.
+
+* Rename the top-level "tools" directory to "tool".
+  The Pub layout convention is to use singular directory names.
+  Plural names won't be correctly identified by Pub and other tools.
+  See https://dart.dev/tools/pub/package-layout.
+Wrote package archive at /Volumes/Storage/gsmlg-app/lib_onnx/build/stable-0.2.0/consumer/lib_onnx-candidate.tar.gz
+
+exit_code=0
+
+$ dart pub get
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/dart-consumer]
+Resolving dependencies...
+Downloading packages...
++ async 2.13.1
++ code_assets 2.1.0
++ collection 1.19.1
++ crypto 3.0.7 (3.0.8 available)
++ ffi 2.2.0
++ file 7.0.1
++ glob 2.2.0
++ hooks 2.2.0
++ lib_onnx 0.2.0
++ logging 1.3.0
++ meta 1.19.0
++ native_toolchain_c 0.19.5
++ path 1.9.1
++ platform 3.2.0
++ process 5.0.6
++ pub_semver 2.2.1
++ record_use 1.1.1
++ source_span 1.10.2
++ string_scanner 1.4.1
++ term_glyph 1.2.2
++ typed_data 1.4.0
++ yaml 3.1.4
+Changed 22 dependencies!
+1 package has newer versions incompatible with dependency constraints.
+Try `dart pub outdated` for more information.
+
+exit_code=0
+
+$ dart run bin/main.dart
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/dart-consumer]
+Running build hooks...clang: warning: overriding '-mmacos-version-min=12' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]
+
+
+Running build hooks...{"status":"passed","fixture":"identity_float32","output":[1.0,2.0,3.0,4.0],"modelHash":"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515","actualProviders":["CPU"],"hardwareObserved":false,"bridge":"0.2.0","ort":"1.31.1","compiledProviders":["CoreMLExecutionProvider","WebGpuExecutionProvider","CPUExecutionProvider"],"diagnostic":"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.09 ms, fallback: false)","hardware_acceptance":"not-run","qwen_acceptance":"not-run"}
+
+exit_code=0
+
+$ dart build cli --target=bin/main.dart --output=/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/dart-consumer]
+Running build hooks...clang: warning: overriding '-mmacos-version-min=12' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]
+
+
+Running build hooks...Running link hooks...Running link hooks...Copying 2 build assets:
+package:lib_onnx/onnxruntime
+package:lib_onnx/src/ffi/native_library.dart
+Generated: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/bin/main
+
+exit_code=0
+
+$ /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/bin/main
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+{"status":"passed","fixture":"identity_float32","output":[1.0,2.0,3.0,4.0],"modelHash":"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515","actualProviders":["CPU"],"hardwareObserved":false,"bridge":"0.2.0","ort":"1.31.1","compiledProviders":["CoreMLExecutionProvider","WebGpuExecutionProvider","CPUExecutionProvider"],"diagnostic":"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.086 ms, fallback: false)","hardware_acceptance":"not-run","qwen_acceptance":"not-run"}
+
+exit_code=0
+
+$ otool -L /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/liblib_onnx_bridge.dylib
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/liblib_onnx_bridge.dylib:
+	@rpath/lib/liblib_onnx_bridge.dylib (compatibility version 0.0.0, current version 0.0.0)
+	@rpath/lib/libonnxruntime.1.dylib (compatibility version 1.0.0, current version 1.31.1)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5027.1.8)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.40.3)
+
+exit_code=0
+
+$ codesign --verify --verbose=2 /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/liblib_onnx_bridge.dylib
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/liblib_onnx_bridge.dylib: valid on disk
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/liblib_onnx_bridge.dylib: satisfies its Designated Requirement
+
+exit_code=0
+
+$ otool -L /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/libonnxruntime.1.dylib
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/libonnxruntime.1.dylib:
+	@rpath/lib/libonnxruntime.1.dylib (compatibility version 1.0.0, current version 1.31.1)
+	/System/Library/Frameworks/CoreML.framework/Versions/A/CoreML (compatibility version 1.0.0, current version 1.0.0)
+	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+	/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit (compatibility version 1.0.0, current version 275.0.0)
+	/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1193.49.3)
+	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 370.64.2)
+	/System/Library/Frameworks/IOSurface.framework/Versions/A/IOSurface (compatibility version 1.0.0, current version 1.0.0)
+	/usr/lib/libsqlite3.dylib (compatibility version 9.0.0, current version 380.0.0)
+	/usr/lib/libz.1.dylib (compatibility version 1.0.0, current version 1.2.12)
+	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 4201.0.0)
+	/System/Library/Frameworks/CFNetwork.framework/Versions/A/CFNetwork (compatibility version 1.0.0, current version 3860.255.31)
+	/System/Library/Frameworks/Network.framework/Versions/A/Network (compatibility version 1.0.0, current version 5569.60.39)
+	/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration (compatibility version 1.0.0, current version 1385.60.3)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 4201.0.0)
+	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2000.67.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+
+exit_code=0
+
+$ codesign --verify --verbose=2 /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/libonnxruntime.1.dylib
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/libonnxruntime.1.dylib: valid on disk
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/cli-release/bundle/lib/libonnxruntime.1.dylib: satisfies its Designated Requirement
+
+exit_code=0
+
+$ flutter create --platforms=macos --project-name=archive_flutter_consumer --empty /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5]
+Creating project ../../../../../../../var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer...
+Resolving dependencies in `../../../../../../../var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer`...
+Downloading packages...
+Got dependencies in `../../../../../../../var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer`.
+Wrote 38 files.
+
+All done!
+You can find general documentation for Flutter at: https://docs.flutter.dev/
+Detailed API documentation is available at: https://api.flutter.dev/
+If you prefer video documentation, consider: https://www.youtube.com/c/flutterdev
+
+In order to run your empty application, type:
+
+  $ cd ../../../../../../../var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer
+  $ flutter run
+
+Your empty application code is in ../../../../../../../var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/lib/main.dart.
+
+
+exit_code=0
+
+$ flutter pub get
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer]
+Resolving dependencies...
+Downloading packages...
++ code_assets 2.1.0
++ crypto 3.0.7 (3.0.8 available)
++ ffi 2.2.0
++ file 7.0.1
++ glob 2.2.0
++ hooks 2.2.0
++ lib_onnx 0.2.0
++ logging 1.3.0
+  material_color_utilities 0.13.0 (0.13.1 available)
+> meta 1.19.0 (was 1.18.3)
++ native_toolchain_c 0.19.5
++ platform 3.2.0
++ process 5.0.6
++ pub_semver 2.2.1
++ record_use 1.1.1
++ typed_data 1.4.0
+  vector_math 2.4.0 (2.4.4 available)
++ yaml 3.1.4
+These packages are no longer being depended on:
+- boolean_selector 2.1.2
+- clock 1.1.3
+- fake_async 1.3.3
+- flutter_lints 6.0.0
+- flutter_test 0.0.0 from sdk flutter
+- leak_tracker 11.0.2
+- leak_tracker_flutter_testing 3.0.10
+- leak_tracker_testing 3.0.2
+- lints 6.1.0
+- matcher 0.12.20
+- stack_trace 1.12.2
+- stream_channel 2.1.4
+- test_api 0.7.12
+- vm_service 15.4.0
+Changed 30 dependencies!
+3 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+
+exit_code=0
+
+[Scoped build input: FLUTTER_MACOS_ARM64_ONLY=true; no global Flutter config changed]
+
+$ flutter build macos --release
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer]
+Building macOS application...
+2026-11-05 00:55:47.000 xcodebuild[7828:77499930] [MT] IDESchemeActionsInvocationRecord: Device <IDEOSXSupportCore.IDEMacPlaceholder: 0x78aac726c0 (Any Mac | undefined_arch)> is missing operatingSystemVersion, operatingSystemVersionWithBuildNumber.
+clang: warning: overriding '-mmacos-version-min=13' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]
+Project /private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer built and packaged successfully.
+warning: Run script build phase 'Run Script' will be run during every build because it does not specify any outputs. To address this issue, either add output dependencies to the script phase, or configure it to run in every build by unchecking "Based on dependency analysis" in the script phase. (in target 'Flutter Assemble' from project 'Runner')
+✓ Built build/macos/Build/Products/Release/archive_flutter_consumer.app (48.4MB)
+
+exit_code=0
+
+$ codesign --verify --deep --strict --verbose=2 /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+--prepared:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/lib_onnx_bridge.framework/Versions/Current/.
+--validated:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/lib_onnx_bridge.framework/Versions/Current/.
+--prepared:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/App.framework/Versions/Current/.
+--validated:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/App.framework/Versions/Current/.
+--prepared:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/FlutterMacOS.framework/Versions/Current/.
+--validated:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/FlutterMacOS.framework/Versions/Current/.
+--prepared:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/onnxruntime.1.framework/Versions/Current/.
+--validated:/private/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/Frameworks/onnxruntime.1.framework/Versions/Current/.
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app: valid on disk
+/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app: satisfies its Designated Requirement
+
+exit_code=0
+
+$ /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app/Contents/MacOS/archive_flutter_consumer
+[cwd: /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/unrelated-cwd]
+sandbox_extension_issue_file_to_process failed for /var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-trupawz5/flutter-consumer/build/macos/Build/Products/Release/archive_flutter_consumer.app: 1 (Operation not permitted)
+[IMPORTANT:flutter/shell/platform/embedder/embedder_surface_metal_impeller.mm(53)] Using the Impeller rendering backend (MetalSDF).
+{"status":"passed","fixture":"identity_float32","output":[1.0,2.0,3.0,4.0],"modelHash":"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515","actualProviders":["CPU"],"hardwareObserved":false,"bridge":"0.2.0","ort":"1.31.1","compiledProviders":["CoreMLExecutionProvider","WebGpuExecutionProvider","CPUExecutionProvider"],"diagnostic":"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.065 ms, fallback: false)","hardware_acceptance":"not-run","qwen_acceptance":"not-run"}
+
+exit_code=0

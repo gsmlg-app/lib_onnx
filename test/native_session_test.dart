@@ -34,7 +34,7 @@ void main() {
   test(
     'bridge ABI and build capability are separate from execution evidence',
     () {
-      expect(OnnxRuntime.bridgeVersion, '0.2.0-dev.1');
+      expect(OnnxRuntime.bridgeVersion, '0.2.0');
       expect(OnnxRuntime.ortVersion, '1.31.1');
       expect(rt.getAvailableProviders(), contains('CPUExecutionProvider'));
       expect(rt.isProviderSupported(ExecutionProvider.cpu), isTrue);
