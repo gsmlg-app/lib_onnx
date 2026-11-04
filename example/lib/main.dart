@@ -12,10 +12,10 @@ class LibOnnxExampleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'lib_onnx native inference',
-        theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-        home: const HomeScreen(),
-      );
+    title: 'lib_onnx native inference',
+    theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
+    home: const HomeScreen(),
+  );
 }
 
 class HomeScreen extends StatefulWidget {
@@ -111,8 +111,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       _session = session;
       if (mounted) setState(() => _status = 'Running native ONNX inference…');
-      input =
-          OnnxTensor.fromFloat32([1, 4], Float32List.fromList([-1, 0, 1, 2]));
+      input = OnnxTensor.fromFloat32([
+        1,
+        4,
+      ], Float32List.fromList([-1, 0, 1, 2]));
       final result = await session.runWithDiagnostics({'input': input});
       outputs = result.outputs;
       final values = outputs['output']!.asFloat32List().toList();
@@ -120,7 +122,8 @@ class _HomeScreenState extends State<HomeScreen> {
       for (var i = 0; i < expected.length; i++) {
         if (!values[i].isFinite || (values[i] - expected[i]).abs() > 1e-5) {
           throw StateError(
-              'MLP result mismatch: expected $expected, got $values');
+            'MLP result mismatch: expected $expected, got $values',
+          );
         }
       }
       if (mounted) {
@@ -164,72 +167,79 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('lib_onnx native inference')),
-        body: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(_runtimeInfo),
-            Text('EPs in this ORT build: ${_compiledProviders.join(', ')}'),
-            const Text(
-                'Build capability does not prove device initialization or GPU/NPU use.'),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<ExecutionProvider>(
-              initialValue: _provider,
-              decoration: const InputDecoration(labelText: 'Requested backend'),
-              items: const [
-                DropdownMenuItem(
-                    value: ExecutionProvider.coreML,
-                    child: Text('CoreML acceleration preference')),
-                DropdownMenuItem(
-                    value: ExecutionProvider.qnn,
-                    child: Text('QNN HTP acceleration preference')),
-                DropdownMenuItem(
-                    value: ExecutionProvider.cpu,
-                    child: Text('Explicit CPU correctness baseline')),
-              ],
-              onChanged: _running
-                  ? null
-                  : (value) {
-                      if (value != null) setState(() => _provider = value);
-                    },
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Allow CPU fallback'),
-              subtitle: const Text('Strict rejects ORT CPU graph fallback. '
-                  'It does not prohibit CPU inside CoreML.'),
-              value: _allowCpuFallback,
-              onChanged: _running
-                  ? null
-                  : (value) => setState(() => _allowCpuFallback = value),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _runtime == null || _running ? null : _run,
-              child: Text(_running ? 'Running…' : 'Run bundled ONNX MLP'),
-            ),
-            const SizedBox(height: 20),
-            SelectableText(_status),
-            if (_output != null)
-              SelectableText('relu([-1, 0, 1, 2] + 0.5) = $_output'),
-            if (_report case final report?) ...[
-              const Divider(),
-              Text(
-                  'Actual provider: ${report.activeProvider?.ortName ?? 'unknown'}'),
-              Text('Evidence: ${report.evidenceLevel.description}'),
-              Text(
-                  'Native duration: ${report.durationMs.toStringAsFixed(3)} ms'),
-              SelectableText(
-                  'Model SHA-256: ${report.modelHash ?? 'unavailable'}'),
-              Text(
-                  'CPU fallback: ${report.fallbackOccurred?.toString() ?? 'unknown'}'),
-              Text(report.hardwareDetails),
-              OutlinedButton(
-                  onPressed: _exportReport,
-                  child: const Text('Show actual diagnostic JSON')),
-            ],
-            if (_json != null) SelectableText(_json!),
-          ],
+    appBar: AppBar(title: const Text('lib_onnx native inference')),
+    body: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(_runtimeInfo),
+        Text('EPs in this ORT build: ${_compiledProviders.join(', ')}'),
+        const Text(
+          'Build capability does not prove device initialization or GPU/NPU use.',
         ),
-      );
+        const SizedBox(height: 20),
+        DropdownButtonFormField<ExecutionProvider>(
+          initialValue: _provider,
+          decoration: const InputDecoration(labelText: 'Requested backend'),
+          items: const [
+            DropdownMenuItem(
+              value: ExecutionProvider.coreML,
+              child: Text('CoreML acceleration preference'),
+            ),
+            DropdownMenuItem(
+              value: ExecutionProvider.qnn,
+              child: Text('QNN HTP acceleration preference'),
+            ),
+            DropdownMenuItem(
+              value: ExecutionProvider.cpu,
+              child: Text('Explicit CPU correctness baseline'),
+            ),
+          ],
+          onChanged: _running
+              ? null
+              : (value) {
+                  if (value != null) setState(() => _provider = value);
+                },
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Allow CPU fallback'),
+          subtitle: const Text(
+            'Strict rejects ORT CPU graph fallback. '
+            'It does not prohibit CPU inside CoreML.',
+          ),
+          value: _allowCpuFallback,
+          onChanged: _running
+              ? null
+              : (value) => setState(() => _allowCpuFallback = value),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: _runtime == null || _running ? null : _run,
+          child: Text(_running ? 'Running…' : 'Run bundled ONNX MLP'),
+        ),
+        const SizedBox(height: 20),
+        SelectableText(_status),
+        if (_output != null)
+          SelectableText('relu([-1, 0, 1, 2] + 0.5) = $_output'),
+        if (_report case final report?) ...[
+          const Divider(),
+          Text(
+            'Actual provider: ${report.activeProvider?.ortName ?? 'unknown'}',
+          ),
+          Text('Evidence: ${report.evidenceLevel.description}'),
+          Text('Native duration: ${report.durationMs.toStringAsFixed(3)} ms'),
+          SelectableText('Model SHA-256: ${report.modelHash ?? 'unavailable'}'),
+          Text(
+            'CPU fallback: ${report.fallbackOccurred?.toString() ?? 'unknown'}',
+          ),
+          Text(report.hardwareDetails),
+          OutlinedButton(
+            onPressed: _exportReport,
+            child: const Text('Show actual diagnostic JSON'),
+          ),
+        ],
+        if (_json != null) SelectableText(_json!),
+      ],
+    ),
+  );
 }

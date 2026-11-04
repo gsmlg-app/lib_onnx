@@ -17,11 +17,11 @@ jobs:
         with:
           flutter-version: '3.47.9'
           cache: true
-      - run: dart pub get
-      - run: dart format --output=none --set-exit-if-changed lib hook test tools example/lib
-      - run: dart analyze lib hook test tools
+      - run: dart pub get --no-example
       - run: flutter pub get
         working-directory: example
+      - run: dart format --output=none --set-exit-if-changed lib hook test tools example/lib native/tests/lifecycle_test.dart
+      - run: dart analyze lib hook test tools native/tests/lifecycle_test.dart
       - run: flutter analyze
         working-directory: example
       - run: dart pub publish --dry-run --ignore-warnings

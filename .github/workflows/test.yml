@@ -23,7 +23,7 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: '3.13.7'
-      - run: dart pub get
+      - run: dart pub get --no-example
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -43,6 +43,7 @@ jobs:
       - name: Distribution-tool regression tests
         run: |
           python3 tools/test_distribution.py
+          python3 tools/test_qwen_profile.py
           python3 tools/verify_hook_inputs.py
       - name: Clean archive consumer and release CLI
         run: python3 tools/verify_consumer.py --output build/consumer-evidence
