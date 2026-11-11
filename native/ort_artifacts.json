@@ -9,21 +9,135 @@
       "sha256": "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f",
       "root": "onnxruntime-osx-arm64-1.31.1",
       "library": "libonnxruntime.1.dylib",
-      "providers": ["CPUExecutionProvider", "CoreMLExecutionProvider"]
+      "providers": [
+        "CPUExecutionProvider",
+        "CoreMLExecutionProvider"
+      ]
     },
     "linux_x64": {
       "archive": "onnxruntime-linux-x64-1.31.1.tgz",
       "sha256": "c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9",
       "root": "onnxruntime-linux-x64-1.31.1",
       "library": "libonnxruntime.so.1",
-      "providers": ["CPUExecutionProvider"]
+      "providers": [
+        "CPUExecutionProvider"
+      ]
     },
     "linux_arm64": {
       "archive": "onnxruntime-linux-aarch64-1.31.1.tgz",
       "sha256": "5317505e2da99be65f8e2775ba3c2afd6d2961fd78aba1bd8f56159f48820c78",
       "root": "onnxruntime-linux-aarch64-1.31.1",
       "library": "libonnxruntime.so.1",
-      "providers": ["CPUExecutionProvider"]
+      "providers": [
+        "CPUExecutionProvider"
+      ]
+    },
+    "android_arm64": {
+      "archive": "onnxruntime-android-1.31.1.aar",
+      "url": "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.31.1/onnxruntime-android-1.31.1.aar",
+      "sha256": "d4d50660300ed2c4f38ffdfd5ab5bfa3a22f995f282dda24f42ea3ea55467b49",
+      "format": "zip",
+      "include": "headers",
+      "link": "dynamic",
+      "providers": [
+        "CPUExecutionProvider",
+        "NnapiExecutionProvider",
+        "XnnpackExecutionProvider"
+      ],
+      "elf_machine": 183,
+      "library_path": "jni/arm64-v8a/libonnxruntime.so"
+    },
+    "android_x64": {
+      "archive": "onnxruntime-android-1.31.1.aar",
+      "url": "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.31.1/onnxruntime-android-1.31.1.aar",
+      "sha256": "d4d50660300ed2c4f38ffdfd5ab5bfa3a22f995f282dda24f42ea3ea55467b49",
+      "format": "zip",
+      "include": "headers",
+      "link": "dynamic",
+      "providers": [
+        "CPUExecutionProvider",
+        "NnapiExecutionProvider",
+        "XnnpackExecutionProvider"
+      ],
+      "elf_machine": 62,
+      "library_path": "jni/x86_64/libonnxruntime.so"
+    },
+    "ios_arm64_iphoneos": {
+      "archive": "pod-archive-onnxruntime-c-1.30.0.zip",
+      "url": "https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.30.0.zip",
+      "sha256": "e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea",
+      "format": "zip",
+      "ort_version": "1.30.0",
+      "include": "Headers",
+      "link": "static",
+      "frameworks": [
+        "Foundation",
+        "CoreML",
+        "Network",
+        "UIKit"
+      ],
+      "libraries": [
+        "c++"
+      ],
+      "providers": [
+        "CPUExecutionProvider",
+        "CoreMLExecutionProvider",
+        "XnnpackExecutionProvider"
+      ],
+      "library_path": "onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime",
+      "min_os": "15.1"
+    },
+    "ios_arm64_iphonesimulator": {
+      "archive": "pod-archive-onnxruntime-c-1.30.0.zip",
+      "url": "https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.30.0.zip",
+      "sha256": "e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea",
+      "format": "zip",
+      "ort_version": "1.30.0",
+      "include": "Headers",
+      "link": "static",
+      "frameworks": [
+        "Foundation",
+        "CoreML",
+        "Network",
+        "UIKit"
+      ],
+      "libraries": [
+        "c++"
+      ],
+      "providers": [
+        "CPUExecutionProvider",
+        "CoreMLExecutionProvider",
+        "XnnpackExecutionProvider"
+      ],
+      "library_path": "onnxruntime.xcframework/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime",
+      "min_os": "15.1"
+    },
+    "ios_x64_iphonesimulator": {
+      "archive": "pod-archive-onnxruntime-c-1.30.0.zip",
+      "url": "https://download.onnxruntime.ai/pod-archive-onnxruntime-c-1.30.0.zip",
+      "sha256": "e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea",
+      "format": "zip",
+      "ort_version": "1.30.0",
+      "include": "Headers",
+      "link": "static",
+      "frameworks": [
+        "Foundation",
+        "CoreML",
+        "Network",
+        "UIKit"
+      ],
+      "libraries": [
+        "c++"
+      ],
+      "providers": [
+        "CPUExecutionProvider",
+        "CoreMLExecutionProvider",
+        "XnnpackExecutionProvider"
+      ],
+      "library_path": "onnxruntime.xcframework/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime",
+      "min_os": "15.1"
     }
-  }
+  },
+  "ios_source": "https://download.onnxruntime.ai (official onnxruntime-c CocoaPods archive; no 1.31.1 iOS archive is published)",
+  "android_source": "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.31.1/"
 }

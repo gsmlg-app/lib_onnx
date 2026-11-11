@@ -1,0 +1,177 @@
+$ dart pub get --no-example
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 103.0.0 (111.0.0 available)
+  analyzer 13.3.0 (14.7.0 available)
+  code_assets 2.1.0 (2.2.0 available)
+  crypto 3.0.7 (3.0.8 available)
+  native_toolchain_c 0.19.5 (0.19.6 available)
+  package_config 2.2.0 (3.0.0 available)
+  test 1.31.1 (1.33.0 available)
+  test_api 0.7.12 (0.7.15 available)
+  test_core 0.6.18 (0.6.21 available)
+Got dependencies!
+9 packages have newer versions incompatible with dependency constraints.
+Try `dart pub outdated` for more information.
+
+exit_code=0
+
+$ flutter pub get
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx/example]
+Resolving dependencies...
+Downloading packages...
+  code_assets 2.1.0 (2.2.0 available)
+  crypto 3.0.7 (3.0.8 available)
+  flutter_lints 5.0.0 (6.0.0 available)
+> lib_onnx 0.3.0 from path .. (was 0.2.0 from path ..)
+  lints 5.1.1 (6.1.0 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  native_toolchain_c 0.19.5 (0.19.6 available)
+  test_api 0.7.12 (0.7.15 available)
+Changed 1 dependency!
+7 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+
+exit_code=0
+
+$ dart format --output=none --set-exit-if-changed lib hook test tools example/lib native/tests/lifecycle_test.dart
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Formatted 31 files (0 changed) in 0.08 seconds.
+
+exit_code=0
+
+$ dart analyze lib hook test tools native/tests/lifecycle_test.dart
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Analyzing lib, hook, test, tools, lifecycle_test.dart...
+No issues found!
+
+exit_code=0
+
+$ flutter analyze
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx/example]
+Resolving dependencies...
+Downloading packages...
+  code_assets 2.1.0 (2.2.0 available)
+  crypto 3.0.7 (3.0.8 available)
+  flutter_lints 5.0.0 (6.0.0 available)
+  lints 5.1.1 (6.1.0 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  native_toolchain_c 0.19.5 (0.19.6 available)
+  test_api 0.7.12 (0.7.15 available)
+Got dependencies!
+7 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing example...                                            
+No issues found! (ran in 2.8s)
+
+exit_code=0
+
+$ dart test --reporter compact
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Running build hooks...clang: warning: overriding '-mmacos-version-min=12' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]
+
+
+Running build hooks...00:00 +0: loading test/model_manifest_test.dart                                                                                                                                                        00:00 +0: test/model_manifest_test.dart: ModelManifest Serializes and deserializes model manifest JSON accurately                                                                                      00:00 +1: test/embedding_adapter_test.dart: EmbeddingAdapter L2 Normalization produces unit vectors                                                                                                    00:00 +2: test/embedding_adapter_test.dart: EmbeddingAdapter L2 Normalization produces unit vectors                                                                                                    00:00 +3: test/model_manifest_test.dart: ModelManifest rejects an external data manifest without per-file checksums                                                                                    00:00 +4: test/embedding_adapter_test.dart: EmbeddingAdapter Cosine similarity of identical and orthogonal vectors                                                                                     00:00 +5: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                 00:00 +6: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                 00:00 +7: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                 00:00 +8: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                 00:00 +9: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                 00:00 +10: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +11: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +12: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +13: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +14: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +15: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +16: test/model_manifest_test.dart: ModelManifest Qwen verifier matches runtime identity after renaming the model                                                                                00:00 +17: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +18: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +19: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +20: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +21: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +22: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +23: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +24: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +25: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +26: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +27: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +28: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +29: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +30: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +31: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +32: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +33: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +34: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +35: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +36: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +37: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +38: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +39: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +40: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +41: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +42: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +43: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +44: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +45: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +46: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +47: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +48: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +49: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +50: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +51: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +52: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +53: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +54: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              2026-11-11 23:50:55.527 dartvm[66984:116659288] 2026-11-11 23:50:55.527287 [E:onnxruntime:, inference_session.cc:3181 operator()] This session contains graph nodes that are assigned to the default CPU EP, but fallback to CPU EP has been explicitly disabled by the user.
+00:00 +55: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +56: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +57: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +58: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:00 +59: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:01 +59: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:01 +60: test/stress_and_lifecycle_test.dart: 100 load/run/await-close cycles and 1000 native runs retain exact results                                                                              00:01 +60: All tests passed!                                                                                                                                                                           
+
+exit_code=0
+
+$ python3 tools/test_distribution.py
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.021s
+
+OK
+
+exit_code=0
+
+$ python3 tools/test_qwen_profile.py
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.005s
+
+OK
+
+exit_code=0
+
+$ python3 tools/verify_hook_inputs.py
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+{
+  "status": "passed",
+  "cases": [
+    {
+      "case": "unsupported-windows-builds-without-asset",
+      "status": "passed",
+      "result": "built without code assets"
+    },
+    {
+      "case": "unsupported-android-arm-builds-without-asset",
+      "status": "passed",
+      "result": "built without code assets"
+    },
+    {
+      "case": "corrupt-archive",
+      "status": "passed",
+      "rejection": "SHA256 mismatch"
+    },
+    {
+      "case": "missing-offline-archive",
+      "status": "passed",
+      "rejection": "Pinned ORT archive missing"
+    },
+    {
+      "case": "ios-device-uses-pinned-ios-archive",
+      "status": "passed",
+      "rejection": "pod-archive-onnxruntime-c-1.30.0.zip"
+    },
+    {
+      "case": "ios-simulator-uses-pinned-ios-archive",
+      "status": "passed",
+      "rejection": "pod-archive-onnxruntime-c-1.30.0.zip"
+    },
+    {
+      "case": "android-uses-pinned-aar",
+      "status": "passed",
+      "rejection": "onnxruntime-android-1.31.1.aar"
+    },
+    {
+      "case": "old-bundle-abi",
+      "status": "passed",
+      "rejection": "Native bundle target/SDK/ABI/ORT mismatch"
+    }
+  ]
+}
+
+exit_code=0
+
+$ tools/run_native_tests.sh
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Generated /Volumes/Storage/gsmlg-app/lib_onnx/tools/../test/fixtures/identity_float32.onnx (102 bytes)
+Generated /Volumes/Storage/gsmlg-app/lib_onnx/tools/../test/fixtures/mlp_smoke.onnx (305 bytes)
+2026-11-11 23:51:08.723 runtime_test[67358:116661122] 2026-11-11 23:51:08.723737 [E:onnxruntime:, sequential_executor.cc:677 ExecuteKernel] Non-zero status code returned while running Loop node. Name:'' Status Message: Exiting due to terminate flag being set to true.
+2026-11-11 23:51:08.728 runtime_test[67358:116661122] 2026-11-11 23:51:08.728110 [E:onnxruntime:, sequential_executor.cc:677 ExecuteKernel] Non-zero status code returned while running Loop node. Name:'' Status Message: Exiting due to terminate flag being set to true.
+native safety/lifecycle: PASS
+
+exit_code=0
+
+$ tools/run_native_tests.sh thread
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+Generated /Volumes/Storage/gsmlg-app/lib_onnx/tools/../test/fixtures/identity_float32.onnx (102 bytes)
+Generated /Volumes/Storage/gsmlg-app/lib_onnx/tools/../test/fixtures/mlp_smoke.onnx (305 bytes)
+2026-11-11 23:51:09.745 runtime_test[67379:116661229] 2026-11-11 23:51:09.745729 [E:onnxruntime:, sequential_executor.cc:677 ExecuteKernel] Non-zero status code returned while running Loop node. Name:'' Status Message: Exiting due to terminate flag being set to true.
+2026-11-11 23:51:09.748 runtime_test[67379:116661229] 2026-11-11 23:51:09.748831 [E:onnxruntime:, sequential_executor.cc:677 ExecuteKernel] Non-zero status code returned while running Loop node. Name:'' Status Message: Exiting due to terminate flag being set to true.
+native safety/lifecycle: PASS
+
+exit_code=0
+
+$ tools/run_dart_native_tests.sh
+[cwd: /Volumes/Storage/gsmlg-app/lib_onnx]
+00:00 +0: loading native/tests/lifecycle_test.dart
+00:00 +0: native control remains responsive in dequeue gap; timeout and bounded queue
+00:00 +1: All tests passed!
+
+exit_code=0
+

@@ -1,0 +1,9 @@
+# Unsupported-target runtime behaviour — lib_onnx 0.3.0
+# A copy of the package with macos_arm64 removed from native/ort_artifacts.json, consumed by a Dart CLI on macOS arm64.
+# The hook emits no code asset; the build succeeds; both factories throw UnsupportedError.
+$ dart run bin/main.dart   # calls OnnxRuntime.create() then OnnxRuntime.createAsync()
+UnsupportedError: Unsupported operation: lib_onnx has no native runtime for this platform (macos): the build hook found no pinned ONNX Runtime artifact and no native_bundle was configured. Invalid argument(s): Couldn't resolve native function 'lib_onnx_library_path' in 'package:lib_onnx/src/ffi/native_library.dart' : No asset with id 'package:lib_onnx/src/ffi/native_library.dart' found. Available native assets: . Att
+UnsupportedError: Unsupported operation: lib_onnx has no native runtime for this platform (macos): the build hook found no pinned ONNX Runtime artifact and no native_bundle was configured. Invalid argument(s): Couldn't resolve native function 'lib_onnx_library_path' in 'package:lib_onnx/src/ffi/native_library.dart' : No asset with id 'package:lib_onnx/src/ffi/native_library.dart' found. Available native assets: . Att
+
+$ python3 tools/verify_hook_inputs.py   # hook-level cases, see 0.3.0-software.log
+unsupported-windows-builds-without-asset: passed; unsupported-android-arm-builds-without-asset: passed

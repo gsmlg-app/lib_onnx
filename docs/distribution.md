@@ -12,13 +12,15 @@ SHA-256，编译 bridge，再把 bridge 和 ORT 交给 SDK 作为 code assets �
 C 工具链、tar 和网络；后续复用校验过的归档缓存。加载时平台 loader 校验架构，Dart loader
 校验 bridge ABI = 2、ORT = 1.31.1；旧 bridge 或不匹配 ORT 被明确拒绝。
 
-| 目标 | 默认构建输入 | 本轮声明 |
+| 目标 | 默认构建输入 | 0.3.0 声明 |
 |---|---|---|
 | macOS arm64、macOS 14+ | 官方 `onnxruntime-osx-arm64-1.31.1.tgz`，CoreML/CPU | CPU 推理为 stable；CoreML 仍为 experimental，GPU/ANE 观测未完成 |
+| Android arm64-v8a、x86_64 | Maven Central 官方 `onnxruntime-android-1.31.1.aar`（`jni/<abi>/libonnxruntime.so`，CPU/NNAPI/XNNPACK） | arm64 CPU 推理已在真机验证；hook 对 ORT 与 bridge 逐个检查 ELF 架构和 16 KB 对齐；x86_64 仅编译/打包 |
+| iOS 真机 arm64、模拟器 arm64/x64，iOS 15.1+ | 官方 CocoaPods `pod-archive-onnxruntime-c-1.30.0.zip`（静态 xcframework），静态链接进 bridge | 官方未发布 1.31.1 iOS 构件，因此 iOS 固定 ORT 1.30.0；加载器在 iOS 上期望 1.30.0。设备验收见 [0.3.0 记录](reviews/0.3.0-mobile-cpu.md) |
 | Linux x64/arm64 | 对应官方 Linux 1.31.1 归档 | 仅 CPU 正确性/安全测试路线，不是 Linux GPU 支持 |
-| iOS 真机 arm64 | 需要单独 iPhoneOS ORT/CoreML 构件 | experimental；未提供构件时明确拒绝构建 |
-| iOS 模拟器 | 需要单独 iPhoneSimulator 构件 | experimental；不能以 macOS dylib 或真机构件替代 |
-| Android arm64-v8a | ORT QNN + 合法取得的匹配 HTP 依赖 | experimental；SDK/构件/最终 APK 验收尚需独立完成 |
+| 其他目标（Windows、Android armeabi-v7a、macOS x64 等） | 无 | hook 不产出 code asset，消费端照常构建；运行时 `OnnxRuntime.create*` 抛出 `UnsupportedError` |
+
+Android QNN/HTP 仍需通过 `native_bundle` 提供经验证的构件（见下文）；官方 AAR 不含 QNN EP。
 
 `GetAvailableProviders` 仅表示构件编入的 EP。已检查的官方 ORT dylib 的 `LC_BUILD_VERSION` 明确要求 macOS14.0；
 Dart JIT 的通用 hook target 默认12 不会改变实际最低系统。消费项目的 macOS deployment

@@ -1,12 +1,20 @@
 # lib_onnx
 
-Dart/Flutter → thin C ABI → ONNX Runtime 1.31.1. **0.2.0 / bridge ABI 2** provides stable CPU inference on macOS arm64. CoreML and QNN HTP integration remain experimental; GPU/NPU platform acceptance and Qwen acceptance remain open. See the [stable release acceptance scope](docs/reviews/stable-0.2.0.md).
+Dart/Flutter → thin C ABI → ONNX Runtime. **0.3.0 / bridge ABI 2** provides CPU inference on macOS arm64 and Android arm64-v8a with ONNX Runtime 1.31.1, and on iOS with ONNX Runtime 1.30.0 (the newest official iOS archive). CoreML and QNN HTP integration remain experimental; GPU/NPU acceptance and Qwen acceptance remain open. See the [0.3.0 acceptance scope](docs/reviews/0.3.0-mobile-cpu.md).
 
-The implemented native-assets route builds and bundles the macOS arm64 bridge and pinned ORT dependency without CWD/Homebrew searches or copying dylibs. It requires Dart 3.10+, a C11 compiler, and macOS 14+. Linux artifacts are for CPU correctness checks. iOS device/simulator and Android QNN bundles are separate experimental inputs; see [distribution](docs/distribution.md).
+| Target | Pinned official ORT input | Bundled by the hook |
+|---|---|---|
+| macOS arm64 (macOS 14+) | `onnxruntime-osx-arm64-1.31.1.tgz` | bridge + `libonnxruntime.1.dylib` |
+| Android arm64-v8a, x86_64 | `onnxruntime-android-1.31.1.aar` (Maven Central) | bridge + `libonnxruntime.so`, ELF 16 KB checked |
+| iOS device, simulator arm64/x64 (iOS 15.1+) | `pod-archive-onnxruntime-c-1.30.0.zip` | bridge with ORT statically linked |
+| Linux x64/arm64 | official Linux 1.31.1 archives | CPU correctness checks only |
+| Any other target (Windows, Android armeabi-v7a, macOS x64, …) | none | nothing: the app builds, and `OnnxRuntime.create*` throws `UnsupportedError` |
+
+The native-assets route downloads and verifies the pinned archive (SHA-256) and builds the bridge without CWD/Homebrew searches or copying libraries. It requires Dart 3.10+ and a C11 toolchain (Xcode for Apple targets, the Android NDK for Android). `hooks.user_defines.lib_onnx.native_bundle` still overrides any target with an explicitly verified bundle; see [distribution](docs/distribution.md).
 
 ```yaml
 dependencies:
-  lib_onnx: ^0.2.0
+  lib_onnx: ^0.3.0
 ```
 
 ```dart

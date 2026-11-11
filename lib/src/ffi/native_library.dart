@@ -1,4 +1,5 @@
 import 'dart:ffi' as ffi;
+import 'dart:io' show Platform;
 import 'package:ffi/ffi.dart';
 
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>(
@@ -12,6 +13,14 @@ external ffi.Pointer<ffi.Char> _bundledLibraryPath();
 class NativeLibrary {
   static const abiVersion = 2;
   static const ortVersion = '1.31.1';
+
+  /// Official iOS ORT archives lag desktop/Android releases; the newest
+  /// published iOS archive is pinned instead (see native/ort_artifacts.json).
+  static const iosOrtVersion = '1.30.0';
+
+  /// The ORT version the build hook pins for the running platform.
+  static String get expectedOrtVersion =>
+      Platform.isIOS ? iosOrtVersion : ortVersion;
   static ffi.DynamicLibrary? _cached;
 
   static ffi.DynamicLibrary load({String? overridePath}) {
@@ -21,17 +30,29 @@ class NativeLibrary {
       if (overridePath != null) {
         library = ffi.DynamicLibrary.open(overridePath);
       } else {
-        final path = _bundledLibraryPath();
+        final ffi.Pointer<ffi.Char> path;
+        try {
+          path = _bundledLibraryPath();
+        } on ArgumentError catch (error) {
+          throw UnsupportedError(
+            'lib_onnx has no native runtime for this platform '
+            '(${Platform.operatingSystem}): the build hook found no pinned '
+            'ONNX Runtime artifact and no native_bundle was configured. '
+            '$error',
+          );
+        }
         if (path == ffi.nullptr) {
           throw StateError('Native asset could not identify its library path.');
         }
         library = ffi.DynamicLibrary.open(path.cast<Utf8>().toDartString());
       }
       validate(library);
+    } on UnsupportedError {
+      rethrow;
     } catch (error) {
       throw StateError(
         'Unable to load compatible lib_onnx ABI $abiVersion '
-        '(ORT $ortVersion). Build with Dart native-assets hooks, or provide '
+        '(ORT $expectedOrtVersion). Build with Dart native-assets hooks, or provide '
         'an explicit libraryPath for development. Loader error: $error',
       );
     }
@@ -41,7 +62,8 @@ class NativeLibrary {
 
   /// The platform loader rejects incompatible Mach-O/ELF architectures first;
   /// these checks then reject old bridge ABIs and mismatched ORT engines.
-  static void validate(ffi.DynamicLibrary library) {
+  static void validate(ffi.DynamicLibrary library, {String? expectedOrt}) {
+    final expected = expectedOrt ?? expectedOrtVersion;
     final abi = library.lookupFunction<ffi.Uint32 Function(), int Function()>(
       'lib_onnx_abi_version',
     )();
@@ -59,8 +81,8 @@ class NativeLibrary {
       throw StateError('ORT version is unavailable.');
     }
     final version = ort.cast<Utf8>().toDartString();
-    if (version != ortVersion) {
-      throw StateError('ORT mismatch: expected $ortVersion, found $version.');
+    if (version != expected) {
+      throw StateError('ORT mismatch: expected $expected, found $version.');
     }
   }
 }

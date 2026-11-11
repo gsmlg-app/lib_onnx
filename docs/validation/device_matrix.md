@@ -24,3 +24,15 @@ suite, and independently launched clean CLI and Flutter release consumers
 passed. This establishes the macOS arm64 CPU-only stable target. GPU/ANE,
 Qwen, iOS/Android and Linux device acceptance retain the separate limitations
 above. Commands, hashes and receipts are in [stable-0.2.0.md](../reviews/stable-0.2.0.md).
+
+## 0.3.0 mobile CPU acceptance — 2026-11-12
+
+| Device / target | Actual check | Status and limit |
+|---|---|---|
+| MacBook Pro / Apple M1 Max, macOS 27.0.1 | Full software suite; clean hosted-archive JIT, CLI and Flutter release consumers; EmbeddingGemma 2 q4 parity against Python ORT | CPU passed; GPU/ANE observation not-run |
+| Pixel Fold, Android 17, arm64-v8a | Clean hosted-archive release APK and path probe; ELF 16 KB audit of the APK's arm64 libraries | CPU passed (ORT 1.31.1, official AAR); kernel pages 4096; NNAPI/XNNPACK registration only |
+| iPhone 18 Pro (iPhone19,2), iOS 27.2.1 | Clean hosted-archive signed release app and path probe | CPU passed (ORT 1.30.0, official pod archive, static); CoreML registration only |
+| iOS simulator arm64/x64, Android x86_64 | Compiled and packaged | Not run |
+| Windows, Android armeabi-v7a, other unpinned targets | Hook builds without code assets; runtime throws `UnsupportedError` | No runtime support |
+
+Commands, receipts and hashes: [0.3.0-mobile-cpu.md](../reviews/0.3.0-mobile-cpu.md).

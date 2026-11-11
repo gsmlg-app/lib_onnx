@@ -1,0 +1,67 @@
+# Android arm64 device acceptance — lib_onnx 0.3.0 (uncommitted source, fingerprint in artifacts_manifest.json)
+$ adb shell getprop ro.product.model / ro.build.version.release / ro.product.cpu.abi / getconf PAGE_SIZE
+Pixel Fold
+17
+arm64-v8a
+4096
+
+$ flutter build apk --release   # clean consumer: path dependency on this checkout; hook downloaded no artifact (ort_cache user define with the pinned AAR)
+✓ Built build/app/outputs/flutter-apk/app-release.apk (121.9MB)
+$ unzip -l app-release.apk | grep -E 'onnx|bridge'
+    41208  01-01-1981 01:01   lib/arm64-v8a/liblib_onnx_bridge.so
+ 34208672  01-01-1981 01:01   lib/arm64-v8a/libonnxruntime.so
+    39552  01-01-1981 01:01   lib/x86_64/liblib_onnx_bridge.so
+ 40827936  01-01-1981 01:01   lib/x86_64/libonnxruntime.so
+(armeabi-v7a has no pinned artifact: the build succeeds without lib_onnx code assets for that ABI)
+
+$ shasum -a 256 lib/arm64-v8a/{liblib_onnx_bridge.so,libonnxruntime.so}
+a7b4c6ba9db9f5b5fa07942b8b7efd901c7630951443c13894375a05ed953a23  liblib_onnx_bridge.so
+417140158bcf02eaf67fb2947cc973b2e15e6cb199b968c335ac18c8514ef84b  libonnxruntime.so
+
+$ python3 tools/audit_android_pages.py lib/arm64-v8a/*.so   # extracted from the release APK
+{
+  "page_size_check": "passed",
+  "binaries": [
+    {
+      "name": "apk_arm64/lib/arm64-v8a/libapp.so",
+      "load_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "elf_16kb": "passed"
+    },
+    {
+      "name": "apk_arm64/lib/arm64-v8a/libflutter.so",
+      "load_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "elf_16kb": "passed"
+    },
+    {
+      "name": "apk_arm64/lib/arm64-v8a/liblib_onnx_bridge.so",
+      "load_alignments": [
+        16384,
+        16384,
+        16384,
+        16384
+      ],
+      "elf_16kb": "passed"
+    },
+    {
+      "name": "apk_arm64/lib/arm64-v8a/libonnxruntime.so",
+      "load_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "elf_16kb": "passed"
+    }
+  ]
+}
+
+$ adb install -r app-release.apk && am start -n dev.gsmlg.onnx_probe/.MainActivity && logcat | grep LIB_ONNX_PROBE
+11-11 23:47:27.201 23118 23118 I flutter : LIB_ONNX_PROBE PASS bridge=0.3.0 ort=1.31.1 providers=NnapiExecutionProvider,WebGpuExecutionProvider,XnnpackExecutionProvider,CPUExecutionProvider output=[0.0, 0.5, 1.5, 2.5] model_sha256=0d2cfad5ac8f58a6592d00055aa4b17f42a77cd0624c98b0aa8be697a3b5e407
+Policy: SessionOptions.cpuOnly(); fixture: example/assets/mlp_smoke.onnx (expected relu(x+0.5) = [0, 0.5, 1.5, 2.5]).

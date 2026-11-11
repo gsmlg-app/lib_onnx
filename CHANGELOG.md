@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-11-12)
+
+- The build hook now bundles official ONNX Runtime CPU inputs for mobile targets: Android arm64-v8a and x86_64 from the Maven Central `onnxruntime-android` 1.31.1 AAR (runtime and bridge ELF files are checked for 16 KB pages), and iOS device and simulator (arm64, x64) from the official `onnxruntime-c` 1.30.0 CocoaPods archive, statically linked into the bridge. iOS requires iOS 15.1+.
+- iOS uses ONNX Runtime 1.30.0 because no official 1.31.1 iOS archive is published; the loader expects 1.30.0 on iOS and 1.31.1 elsewhere. The bridge uses only C API functions available in both versions.
+- Targets without a pinned artifact or `native_bundle` (for example Windows, Android armeabi-v7a, macOS x64) no longer fail the consumer build: the hook emits no code asset, and creating a runtime throws `UnsupportedError`.
+- Archive URLs may be pinned per target; zip-based archives (`.zip`, `.aar`) are unpacked with `unzip`, falling back to `tar`.
+- Bridge 0.3.0, ABI 2 unchanged. QNN/HTP, CoreML hardware observation and Qwen acceptance remain open.
+
 ## 0.2.0 (2026-11-05)
 
 - Stable CPU inference on macOS arm64 with bridge ABI2 and ONNX Runtime 1.31.1. CoreML/QNN, iOS/Android and full Qwen acceptance remain experimental or incomplete.

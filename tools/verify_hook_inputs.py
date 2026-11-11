@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Negative native-hook input checks; no native artifact or device is simulated."""
+"""Native-hook input checks; no native artifact or device is simulated.
+
+Offline cases with an empty cache prove which pinned archive a target selects
+without downloading it. Unsupported targets must build without code assets.
+"""
 import json
 from pathlib import Path
 import subprocess
@@ -14,6 +18,9 @@ def main():
         work = Path(directory)
         corrupted = work / 'corrupt.tgz'
         corrupted.write_bytes(b'not the pinned ORT release')
+        empty_cache = work / 'empty-cache'
+        empty_cache.mkdir()
+        offline = {'ort_cache': str(empty_cache) + '/', 'offline': True}
         bundle = work / 'wrong-abi-bundle'
         bundle.mkdir()
         (bundle / 'artifacts_manifest.json').write_text(json.dumps({
@@ -23,14 +30,24 @@ def main():
              {'macos': {'target_version': 14}}, 'SHA256 mismatch'),
             ('missing-offline-archive', {'ort_archive': str(work / 'absent.tgz'), 'offline': True},
              'macos', {'macos': {'target_version': 14}}, 'Pinned ORT archive missing'),
-            ('ios-never-uses-macos-library', {}, 'ios',
-             {'ios': {'target_sdk': 'iphoneos', 'target_version': 15}}, 'separately built device/simulator'),
-            ('android-needs-qnn-inputs', {}, 'android',
-             {'android': {'target_ndk_api': 29}}, 'matching Qualcomm runtime libraries'),
+            ('ios-device-uses-pinned-ios-archive', offline, 'ios',
+             {'ios': {'target_sdk': 'iphoneos', 'target_version': 17}}, 'pod-archive-onnxruntime-c-1.30.0.zip'),
+            ('ios-simulator-uses-pinned-ios-archive', offline, 'ios',
+             {'ios': {'target_sdk': 'iphonesimulator', 'target_version': 17}}, 'pod-archive-onnxruntime-c-1.30.0.zip'),
+            ('android-uses-pinned-aar', offline, 'android',
+             {'android': {'target_ndk_api': 29}}, 'onnxruntime-android-1.31.1.aar'),
             ('old-bundle-abi', {'native_bundle': str(bundle)}, 'macos',
              {'macos': {'target_version': 14}}, 'Native bundle target/SDK/ABI/ORT mismatch'),
         ]
-        for name, defines, os_name, platform, message in checks:
+        # (name, defines, os, architecture, platform config, rejection or None for success)
+        cases_to_run = [
+            ('unsupported-windows-builds-without-asset', {}, 'windows', 'x64', {}, None),
+            ('unsupported-android-arm-builds-without-asset', {}, 'android', 'arm',
+             {'android': {'target_ndk_api': 29}}, None),
+            *[(name, defines, os_name, 'arm64', platform, message)
+              for name, defines, os_name, platform, message in checks],
+        ]
+        for name, defines, os_name, architecture, platform, message in cases_to_run:
             target = work / name
             target.mkdir()
             configuration = {
@@ -38,7 +55,7 @@ def main():
                 'out_dir_shared': str(target / 'shared'), 'out_file': str(target / 'output.json'),
                 'config': {'build_asset_types': ['code_assets/code'], 'linking_enabled': False,
                            'extensions': {'code_assets': {'link_mode_preference': 'dynamic',
-                             'target_os': os_name, 'target_architecture': 'arm64', **platform}}},
+                             'target_os': os_name, 'target_architecture': architecture, **platform}}},
                 'user_defines': {'workspace_pubspec': {'base_path': str(ROOT) + '/', 'defines': defines}},
             }
             path = target / 'input.json'
@@ -47,6 +64,14 @@ def main():
                                      'hook/build.dart', f'--config={path}'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=60)
             output = result.stdout + result.stderr
+            if message is None:
+                assets = json.loads((target / 'output.json').read_text()).get('assets', []) \
+                    if result.returncode == 0 else None
+                if result.returncode != 0 or assets:
+                    raise RuntimeError(f'{name}: unsupported target must build without assets '
+                                       f'(exit {result.returncode}, assets {assets})\n{output}')
+                cases.append({'case': name, 'status': 'passed', 'result': 'built without code assets'})
+                continue
             if result.returncode == 0 or message not in output:
                 raise RuntimeError(f'{name}: wrong rejection (exit {result.returncode})\n{output}')
             cases.append({'case': name, 'status': 'passed', 'rejection': message})

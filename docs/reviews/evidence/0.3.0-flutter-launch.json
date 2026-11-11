@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "fixture": "identity_float32",
+  "output": [
+    1.0,
+    2.0,
+    3.0,
+    4.0
+  ],
+  "modelHash": "d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515",
+  "actualProviders": [
+    "CPU"
+  ],
+  "hardwareObserved": false,
+  "bridge": "0.3.0",
+  "ort": "1.31.1",
+  "compiledProviders": [
+    "CoreMLExecutionProvider",
+    "WebGpuExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "diagnostic": "DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.086 ms, fallback: false)",
+  "hardware_acceptance": "not-run",
+  "qwen_acceptance": "not-run"
+}

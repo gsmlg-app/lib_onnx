@@ -1,0 +1,28 @@
+# iOS device acceptance — lib_onnx 0.3.0 (CPU), ORT 1.30.0 statically linked into the bridge
+# Device: iPhone 18 Pro (iPhone19,2), iOS 27.2.1 (24B156), arm64, wireless devicectl
+$ xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -destination id=<device> -allowProvisioningUpdates build
+** BUILD SUCCEEDED **
+# The consumer depends on this checkout by path; the hook used the pinned pod-archive-onnxruntime-c-1.30.0.zip
+# (sha256 e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea) through the ort_cache user define.
+$ ls Runner.app/Frameworks
+App.framework
+Flutter.framework
+lib_onnx_bridge.framework
+$ shasum -a 256 Runner.app/Frameworks/lib_onnx_bridge.framework/lib_onnx_bridge
+39622a78943d1aacbfd3903a115cd4d17b447525cd509d906e474753737e2f58  lib_onnx_bridge.framework/lib_onnx_bridge
+$ otool -L lib_onnx_bridge (no separate ORT dylib)
+	@rpath/lib_onnx_bridge.framework/lib_onnx_bridge (compatibility version 0.0.0, current version 0.0.0)
+	/System/Library/Frameworks/Foundation.framework/Foundation (compatibility version 300.0.0, current version 5027.1.8)
+	/System/Library/Frameworks/CoreML.framework/CoreML (compatibility version 1.0.0, current version 1.0.0)
+	/System/Library/Frameworks/Network.framework/Network (compatibility version 1.0.0, current version 6681.42.3)
+	/System/Library/Frameworks/UIKit.framework/UIKit (compatibility version 1.0.0, current version 9127.1.13)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2200.32.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.40.3)
+	/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation (compatibility version 150.0.0, current version 5027.1.8)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+$ codesign --verify --strict Runner.app
+valid
+$ xcrun devicectl device process launch --console --device <device> dev.gsmlg.onnxProbe
+LIB_ONNX_PROBE PASS bridge=0.3.0 ort=1.30.0 providers=CoreMLExecutionProvider,XnnpackExecutionProvider,CPUExecutionProvider output=[0.0, 0.5, 1.5, 2.5] model_sha256=0d2cfad5ac8f58a6592d00055aa4b17f42a77cd0624c98b0aa8be697a3b5e407
+Policy: SessionOptions.cpuOnly(); fixture: example/assets/mlp_smoke.onnx (expected relu(x+0.5) = [0, 0.5, 1.5, 2.5]).
+Limits: CoreML registration is not hardware observation; simulator slices were compiled (flutter build ios --simulator) but not run: no simulator runtime is installed on the host.

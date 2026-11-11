@@ -25,22 +25,27 @@ void main(List<String> arguments) async {
     final lock =
         jsonDecode(await lockFile.readAsString()) as Map<String, dynamic>;
     output.dependencies.add(lockFile.uri);
+    // iOS device and simulator slices are distinct artifacts for one target.
+    final lockKey = code.targetOS == OS.iOS
+        ? '${target}_${code.iOS.targetSdk.type}'
+        : target;
     final artifact =
-        (lock['targets'] as Map<String, dynamic>)[target]
+        (lock['targets'] as Map<String, dynamic>)[lockKey]
             as Map<String, dynamic>?;
     if (artifact == null) {
-      final details = code.targetOS == OS.iOS
-          ? 'iOS ${code.iOS.targetSdk}: supply a separately built device/simulator '
-                'ORT CoreML bundle; a macOS dylib is never linked into iOS.'
-          : code.targetOS == OS.android
-          ? 'Android requires an arm64-v8a NDK build, ORT QNN HTP and legally '
-                'obtained matching Qualcomm runtime libraries, all verified for 16 KB pages.'
-          : 'No pinned native artifact exists for $target.';
-      throw UnsupportedError(
-        '$details See docs/distribution.md; configure '
-        'hooks.user_defines.lib_onnx.native_bundle for an explicitly verified bundle.',
+      // No pinned runtime: the consumer app still builds, and loading the
+      // runtime fails with an explicit unsupported-platform error instead.
+      await File.fromUri(
+        input.outputDirectory.resolve('unsupported_target.txt'),
+      ).writeAsString(
+        'lib_onnx has no pinned ONNX Runtime artifact for $lockKey; '
+        'no native code asset was produced. Configure '
+        'hooks.user_defines.lib_onnx.native_bundle to supply one.\n',
       );
+      return;
     }
+    final ortVersion =
+        (artifact['ort_version'] ?? lock['ort_version']) as String;
     final archiveName = artifact['archive'] as String;
     final explicitArchive = input.userDefines.path('ort_archive');
     final cache =
@@ -56,8 +61,9 @@ void main(List<String> arguments) async {
         );
       }
       final url = Uri.parse(
-        'https://github.com/microsoft/onnxruntime/releases/'
-        'download/v${lock['ort_version']}/$archiveName',
+        artifact['url'] as String? ??
+            'https://github.com/microsoft/onnxruntime/releases/'
+                'download/v$ortVersion/$archiveName',
       );
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 30)
@@ -85,26 +91,51 @@ void main(List<String> arguments) async {
     output.dependencies.add(archive.uri);
     final unpack = input.outputDirectory.resolve('ort/');
     await Directory.fromUri(unpack).create(recursive: true);
-    await _run('tar', ['-xzf', archive.path, '-C', unpack.toFilePath()]);
-    final root = unpack.resolve('${artifact['root']}/');
-    final libraryName = artifact['library'] as String;
-    final library = await File.fromUri(
-      root.resolve('lib/$libraryName'),
-    ).copy(input.outputDirectory.resolve(libraryName).toFilePath());
-    output.assets.code.add(
-      CodeAsset(
-        package: input.packageName,
-        name: 'onnxruntime',
-        linkMode: DynamicLoadingBundled(),
-        file: library.uri,
+    await _extract(archive, unpack, zip: artifact['format'] == 'zip');
+    final root = artifact['root'] == null
+        ? unpack
+        : unpack.resolve('${artifact['root']}/');
+    final sourceLibrary = File.fromUri(
+      root.resolve(
+        artifact['library_path'] as String? ?? 'lib/${artifact['library']}',
       ),
     );
+    final includes = [
+      'native/include',
+      artifact['include'] == null
+          ? 'native/third_party/onnxruntime/include'
+          : root.resolve(artifact['include'] as String).toFilePath(),
+    ];
+    final staticRuntime = artifact['link'] == 'static';
+    final File? library;
+    if (staticRuntime) {
+      // Statically linked into the bridge: the bridge is the only asset.
+      library = null;
+    } else {
+      library = await sourceLibrary.copy(
+        input.outputDirectory
+            .resolve(sourceLibrary.uri.pathSegments.last)
+            .toFilePath(),
+      );
+      if (code.targetOS == OS.android) {
+        await _verifyAndroidElf(library, artifact['elf_machine'] as int);
+      }
+      output.assets.code.add(
+        CodeAsset(
+          package: input.packageName,
+          name: 'onnxruntime',
+          linkMode: DynamicLoadingBundled(),
+          file: library.uri,
+        ),
+      );
+    }
     final isMac = code.targetOS == OS.macOS;
+    final isApple = isMac || code.targetOS == OS.iOS;
     await CBuilder.library(
       name: 'lib_onnx_bridge',
       assetName: _assetName,
       sources: ['native/src/lib_onnx_bridge.c', 'native/src/library_locator.c'],
-      includes: ['native/include', 'native/third_party/onnxruntime/include'],
+      includes: includes,
       flags: [
         '-pthread',
         '-Wall',
@@ -113,10 +144,19 @@ void main(List<String> arguments) async {
         // Dart JIT's generic hook target defaults12, so set the actual bridge
         // target explicitly and document the effective native minimum14.
         if (isMac) '--target=arm64-apple-macos14.0',
-        library.path,
-        if (isMac) '-Wl,-rpath,@loader_path',
-        if (!isMac) '-Wl,-rpath,\$ORIGIN',
-        if (!isMac) '-ldl',
+        sourceLibrary.path,
+        for (final framework
+            in (artifact['frameworks'] as List<dynamic>? ?? const [])) ...[
+          '-framework',
+          framework as String,
+        ],
+        for (final name
+            in (artifact['libraries'] as List<dynamic>? ?? const []))
+          '-l$name',
+        if (isApple && !staticRuntime) '-Wl,-rpath,@loader_path',
+        if (!isApple) '-Wl,-rpath,\$ORIGIN',
+        if (!isApple) '-ldl',
+        if (code.targetOS == OS.android) '-Wl,-z,max-page-size=16384',
       ],
       std: 'c11',
       linkModePreference: LinkModePreference.dynamic,
@@ -135,14 +175,19 @@ void main(List<String> arguments) async {
         code.targetOS.dylibFileName('lib_onnx_bridge'),
       ),
     );
+    if (code.targetOS == OS.android) {
+      await _verifyAndroidElf(bridge, artifact['elf_machine'] as int);
+    }
     await File.fromUri(
       input.outputDirectory.resolve('artifacts_manifest.json'),
     ).writeAsString(
       const JsonEncoder.withIndent('  ').convert({
         'manifest_version': 2,
         'target': target,
+        if (code.targetOS == OS.iOS) 'ios_sdk': code.iOS.targetSdk.type,
         'bridge_abi_version': 2,
-        'ort_version': lock['ort_version'],
+        'ort_version': ortVersion,
+        'ort_link': staticRuntime ? 'static' : 'dynamic',
         'providers_expected_from_release_metadata': artifact['providers'],
         'providers_compiled': null,
         'provider_verification': 'not-run',
@@ -156,12 +201,32 @@ void main(List<String> arguments) async {
           'device': 'not-run',
         },
         'binaries': [
-          for (final file in [bridge, library])
+          for (final file in [bridge, ?library])
             {'name': file.uri.pathSegments.last, 'sha256': await _digest(file)},
         ],
       }),
     );
   });
+}
+
+/// Unpacks `.tgz` with tar; zip-based archives (`.zip`, `.aar`) with unzip,
+/// falling back to bsdtar (macOS, Windows) when unzip is unavailable.
+Future<void> _extract(
+  File archive,
+  Uri destination, {
+  required bool zip,
+}) async {
+  final target = destination.toFilePath();
+  if (!zip) {
+    await _run('tar', ['-xzf', archive.path, '-C', target]);
+    return;
+  }
+  try {
+    await _run('unzip', ['-q', '-o', archive.path, '-d', target]);
+  } on ProcessException catch (error) {
+    if (error.errorCode != 0) rethrow; // unzip ran and failed
+    await _run('tar', ['-xf', archive.path, '-C', target]);
+  }
 }
 
 Future<void> _useBundle(
@@ -210,7 +275,10 @@ Future<void> _useBundle(
     if (isBridge) bridgeCount++;
     hasRuntime |= entry['role'] == 'runtime';
     if (input.config.code.targetOS == OS.android) {
-      await _verifyAndroidElf(file);
+      await _verifyAndroidElf(
+        file,
+        input.config.code.targetArchitecture == Architecture.x64 ? 62 : 183,
+      );
     }
     output.assets.code.add(
       CodeAsset(
@@ -253,7 +321,8 @@ Future<void> _run(String executable, List<String> arguments) async {
 }
 
 // Check every supplied Android library, rather than trusting manifest claims.
-Future<void> _verifyAndroidElf(File file) async {
+// [machine] is the ELF e_machine: 183 (AArch64) or 62 (x86-64).
+Future<void> _verifyAndroidElf(File file, int machine) async {
   final bytes = await file.readAsBytes();
   final data = ByteData.sublistView(bytes);
   if (bytes.length < 64 ||
@@ -263,8 +332,10 @@ Future<void> _verifyAndroidElf(File file) async {
       bytes[3] != 0x46 ||
       bytes[4] != 2 ||
       bytes[5] != 1 ||
-      data.getUint16(18, Endian.little) != 183) {
-    throw StateError('${file.path}: expected little-endian arm64 ELF64.');
+      data.getUint16(18, Endian.little) != machine) {
+    throw StateError(
+      '${file.path}: expected little-endian ELF64 for machine $machine.',
+    );
   }
   final offset = data.getUint64(32, Endian.little);
   final size = data.getUint16(54, Endian.little);

@@ -1,0 +1,28 @@
+# EmbeddingGemma 2 text embedding parity on macOS arm64 — lib_onnx 0.3.0 (CPU)
+# Model: gsmlg/embeddinggemma-2 @ 604b4b86c6a89a3c6f5ffebd2ce89742edaa6cc5
+#   (unmodified mirror of onnx-community/embeddinggemma-2-ONNX @ daa72c51243991dfcaf9f9137d2c573d8f7790c0)
+# onnx/model_q4.onnx       sha256 f9eeba97acddf139b8ee2ddf04bc30dceafa88de93fadf74d7644e0d61a477a9
+# onnx/model_q4.onnx_data  sha256 c3975f2d1ab7a1878ae31a7d7a9b7804a827aff3800b60dfceafce21cac3df49
+# tokenizer.json           sha256 4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4
+#
+# Graph contract (onnx.load, opset 21 + com.microsoft 1):
+#   IN  input_ids int64 [batch, sequence]; attention_mask int64 [batch, sequence]
+#   IN  image_features / video_features / audio_features float32 [n, 512]  (text-only: empty [0, 512])
+#   OUT sentence_embedding float32 [batch, 768]; last_hidden_state float32 [batch, sequence, 768]
+#
+# Reference: Python onnxruntime CPU + HF `tokenizers` on the same files, four inputs:
+#   "task: search result | query: Which planet is known as the Red Planet?"
+#   "title: none | text: Venus is often called Earth's twin because of its similar size and proximity."
+#   "title: none | text: Mars, known for its reddish appearance, is often referred to as the Red Planet."
+#   "title: none | text: 火星因其红色外观而被称为红色星球。"
+$ uvx --with onnxruntime --with tokenizers --with numpy python -I ref.py <model dir> ref.json
+sims query->docs [0.6845, 0.8542, 0.7985] norms [1.0, 1.0, 1.0, 1.0]
+ids0 [2, 8071, 236787, 3927, 1354, 1109] ... [38342, 236881, 1]
+
+# Candidate: Dart CLI, dart_sentencepiece_tokenizer 1.4.1 (TokenizerJsonLoader.fromJsonFile) +
+# lib_onnx path dependency, SessionOptions.cpuOnly(), empty [0, 512] modality tensors,
+# EmbeddingAdapter(hiddenDim: 768, hasEmbeddedPooling: true).
+$ dart run bin/eg2.dart <model dir> ref.json
+EG2 PASS ids_match=true max_abs_diff=1.28e-8 sims=[0.6845, 0.8542, 0.7985] ort=1.31.1
+
+# Limits: macOS arm64 CPU only; q4 variant only; mobile EmbeddingGemma inference not run here.

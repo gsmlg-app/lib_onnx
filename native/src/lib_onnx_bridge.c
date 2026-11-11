@@ -53,9 +53,9 @@ static int64_t now_us(void) {
 int64_t lib_onnx_monotonic_us(void) { return now_us(); }
 uint32_t lib_onnx_abi_version(void) { return LIB_ONNX_BRIDGE_ABI_VERSION; }
 int32_t lib_onnx_version_major(void) { return 0; }
-int32_t lib_onnx_version_minor(void) { return 2; }
+int32_t lib_onnx_version_minor(void) { return 3; }
 int32_t lib_onnx_version_patch(void) { return 0; }
-const char *lib_onnx_version_string(void) { return "0.2.0"; }
+const char *lib_onnx_version_string(void) { return "0.3.0"; }
 const char *lib_onnx_ort_version_string(void) {
   return OrtGetApiBase()->GetVersionString();
 }

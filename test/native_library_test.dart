@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'package:lib_onnx/src/ffi/native_library.dart';
 import 'package:test/test.dart';
@@ -48,6 +49,34 @@ void main() {
           ),
         );
       }
+    } finally {
+      await temp.delete(recursive: true);
+    }
+  });
+  test('loader accepts the platform-pinned ORT version only', () async {
+    final temp = await Directory.systemTemp.createTemp('lib_onnx_ort_test_');
+    try {
+      final c = File('${temp.path}/stub.c');
+      await c.writeAsString(
+        '#include <stdint.h>\nuint32_t lib_onnx_abi_version(void){return 2;}\nconst char* lib_onnx_ort_version_string(void){return "${NativeLibrary.iosOrtVersion}";}\n',
+      );
+      final out = '${temp.path}/stub.${Platform.isMacOS ? 'dylib' : 'so'}';
+      final result = await Process.run('clang', [
+        '-shared',
+        '-fPIC',
+        c.path,
+        '-o',
+        out,
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      final library = DynamicLibrary.open(out);
+      // The iOS archive version is accepted only where it is pinned.
+      NativeLibrary.validate(library, expectedOrt: NativeLibrary.iosOrtVersion);
+      expect(
+        () => NativeLibrary.validate(library, expectedOrt: '1.31.1'),
+        throwsA(isA<StateError>()),
+      );
+      expect(NativeLibrary.expectedOrtVersion, NativeLibrary.ortVersion);
     } finally {
       await temp.delete(recursive: true);
     }

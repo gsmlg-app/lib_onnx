@@ -1,18 +1,19 @@
 {
   "manifest_version": 2,
   "package": "lib_onnx",
-  "package_version": "0.2.0",
+  "package_version": "0.3.0",
   "bridge_abi_version": 2,
   "ort_version": "1.31.1",
   "claimed_supported_targets": [
-    "macos_arm64"
+    "macos_arm64",
+    "android_arm64",
+    "ios_arm64"
   ],
   "software": {
     "status": "passed",
     "evidence": [
-      "docs/reviews/stable-0.2.0.md",
-      "docs/reviews/evidence/stable-0.2.0-software.log",
-      "docs/reviews/evidence/stable-0.2.0-consumer.json"
+      "docs/reviews/0.3.0-mobile-cpu.md",
+      "docs/reviews/evidence/0.3.0-software.log"
     ]
   },
   "targets": {
@@ -35,7 +36,7 @@
       "binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "37783cb1ed1eccd0cdd8ba24415acfb1121d9b7b91cf40941d4f8f735046fe26",
+          "sha256": "635556537c6cd90edbca5222ef53d903b315d46d24867aac840aad341d634579",
           "role": "bridge",
           "checksum_status": "verified-local-file"
         },
@@ -47,16 +48,17 @@
         }
       ],
       "evidence": [
-        "docs/reviews/stable-0.2.0.md",
-        "docs/reviews/evidence/stable-0.2.0-software.log",
-        "docs/reviews/evidence/stable-0.2.0-consumer.json",
-        "docs/reviews/evidence/stable-0.2.0-consumer.log"
+        "docs/reviews/0.3.0-mobile-cpu.md",
+        "docs/reviews/evidence/0.3.0-software.log",
+        "docs/reviews/evidence/0.3.0-consumer.json",
+        "docs/reviews/evidence/0.3.0-consumer.log"
       ],
-      "device_software_check": "passed: bridge 0.2.0 CPU MLP, JIT, CLI release and Flutter release consumer inference; GPU/ANE acceptance not-run",
+      "device_software_check": "passed: bridge 0.3.0 CPU MLP/Identity, JIT, CLI release and Flutter release consumer inference; GPU/ANE acceptance not-run",
       "signature_status": "ad-hoc signatures verified; Developer ID/notarization not-run",
-      "consumer_receipt": "docs/reviews/evidence/stable-0.2.0-consumer.json",
+      "consumer_receipt": "docs/reviews/evidence/0.3.0-consumer.json",
       "model_evidence": [
-        "docs/reviews/evidence/stable-0.2.0-software.log"
+        "docs/reviews/evidence/0.3.0-software.log",
+        "docs/reviews/evidence/0.3.0-embeddinggemma2-macos.log"
       ],
       "accepted_execution_providers": [
         "CPUExecutionProvider"
@@ -65,7 +67,7 @@
       "consumer_binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "8bd4289a780c7ce9568f02607d5b44e1bff061873068b499d9e6fe0f35bd42a4"
+          "sha256": "d710ece8b4ac4438f3575b3db09fc9f33d930504366ac5d641bbc7a338ce32bd"
         },
         {
           "name": "libonnxruntime.1.dylib",
@@ -75,33 +77,96 @@
     },
     "ios_arm64": {
       "status": {
-        "configured": "experimental",
-        "compiled": "blocked",
-        "packaged": "not-run",
-        "clean_consumer": "not-run",
-        "device": "not-run"
+        "configured": "passed",
+        "compiled": "passed",
+        "packaged": "passed",
+        "clean_consumer": "passed",
+        "device": "passed"
       },
-      "blocker": "Paired iPad Air M3 present; separate verified device ORT/CoreML bundle and signed clean consumer acceptance not supplied"
-    },
-    "ios_simulator_arm64": {
-      "status": {
-        "configured": "experimental",
-        "compiled": "blocked",
-        "packaged": "not-run",
-        "clean_consumer": "not-run",
-        "device": "not-run"
-      },
-      "blocker": "Separate verified iOS simulator ORT bundle required; macOS/device artifacts rejected; simulator cannot prove ANE"
+      "ios_sdk": "iphoneos",
+      "ort_version": "1.30.0",
+      "ort_link": "static",
+      "ort_input": "pod-archive-onnxruntime-c-1.30.0.zip (official onnxruntime-c CocoaPods archive), sha256 e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea",
+      "ort_version_reason": "no official 1.31.1 iOS archive is published; the bridge is compiled against the 1.30.0 headers and the loader expects 1.30.0 on iOS",
+      "min_os": "15.1",
+      "hardware_observed": "not-run",
+      "acceleration_claimed": false,
+      "providers_compiled": [
+        "CoreMLExecutionProvider",
+        "XnnpackExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "providers_source": "lib_onnx_runtime_get_available_providers on the device",
+      "accepted_execution_providers": [
+        "CPUExecutionProvider"
+      ],
+      "binaries": [
+        {
+          "name": "lib_onnx_bridge.framework/lib_onnx_bridge",
+          "sha256": "5ab43e7ab97e2f4b9eac587f4f87c68beb7f9035486ae7d8517129a17d23c3d8",
+          "role": "bridge",
+          "checksum_status": "verified-app-bundle-file"
+        }
+      ],
+      "device_acceptance_scope": "CPU inference on iPhone 18 Pro (iPhone19,2), iOS 27.2.1; clean hosted-archive release consumer and path-consumer probe",
+      "signature_status": "development signing verified (codesign --deep --strict); distribution signing not-run",
+      "evidence": [
+        "docs/reviews/0.3.0-mobile-cpu.md",
+        "docs/reviews/evidence/0.3.0-software.log",
+        "docs/reviews/evidence/0.3.0-consumer.json",
+        "docs/reviews/evidence/0.3.0-consumer.log",
+        "docs/reviews/evidence/0.3.0-ios-arm64.log",
+        "docs/reviews/evidence/0.3.0-ios-launch.json"
+      ]
     },
     "android_arm64": {
       "status": {
-        "configured": "experimental",
-        "compiled": "blocked",
-        "packaged": "not-run",
-        "clean_consumer": "not-run",
-        "device": "not-run"
+        "configured": "passed",
+        "compiled": "passed",
+        "packaged": "passed",
+        "clean_consumer": "passed",
+        "device": "passed"
       },
-      "blocker": "Pocket_DS/SG8275 present with vendor HTP; no verified application ORT QNN/HTP bundle+legal dependency inputs; all ELF/final APK/AAB16KB and HTP inference acceptance remain not-run"
+      "ort_version": "1.31.1",
+      "ort_input": "onnxruntime-android-1.31.1.aar (Maven Central), sha256 d4d50660300ed2c4f38ffdfd5ab5bfa3a22f995f282dda24f42ea3ea55467b49",
+      "hardware_observed": "not-run",
+      "acceleration_claimed": false,
+      "providers_compiled": [
+        "NnapiExecutionProvider",
+        "WebGpuExecutionProvider",
+        "XnnpackExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "providers_source": "lib_onnx_runtime_get_available_providers on the device",
+      "accepted_execution_providers": [
+        "CPUExecutionProvider"
+      ],
+      "binaries": [
+        {
+          "name": "lib/arm64-v8a/liblib_onnx_bridge.so",
+          "sha256": "a7b4c6ba9db9f5b5fa07942b8b7efd901c7630951443c13894375a05ed953a23",
+          "role": "bridge",
+          "checksum_status": "verified-apk-entry"
+        },
+        {
+          "name": "lib/arm64-v8a/libonnxruntime.so",
+          "sha256": "417140158bcf02eaf67fb2947cc973b2e15e6cb199b968c335ac18c8514ef84b",
+          "role": "runtime",
+          "checksum_status": "verified-apk-entry"
+        }
+      ],
+      "page_size_check": "passed",
+      "page_size_evidence": "ELF PT_LOAD audit of the release APK arm64-v8a libraries; device kernel pages 4096",
+      "device_acceptance_scope": "CPU inference on Pixel Fold, Android 17, arm64-v8a; clean hosted-archive release consumer and path-consumer probe",
+      "evidence": [
+        "docs/reviews/0.3.0-mobile-cpu.md",
+        "docs/reviews/evidence/0.3.0-software.log",
+        "docs/reviews/evidence/0.3.0-consumer.json",
+        "docs/reviews/evidence/0.3.0-consumer.log",
+        "docs/reviews/evidence/0.3.0-android-arm64.log",
+        "docs/reviews/evidence/0.3.0-android-launch.json"
+      ],
+      "qnn": "not included in the official AAR; QNN/HTP still requires a verified native_bundle"
     },
     "linux_x64": {
       "status": {
@@ -122,9 +187,47 @@
         "device": "not-run"
       },
       "acceleration_claimed": false
+    },
+    "ios_simulator": {
+      "status": {
+        "configured": "passed",
+        "compiled": "passed",
+        "packaged": "passed",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "ios_sdk": "iphonesimulator",
+      "architectures": [
+        "arm64",
+        "x64"
+      ],
+      "ort_version": "1.30.0",
+      "ort_link": "static",
+      "note": "flutter build ios --simulator succeeded; no simulator runtime installed on the verification host",
+      "acceleration_claimed": false
+    },
+    "android_x64": {
+      "status": {
+        "configured": "passed",
+        "compiled": "passed",
+        "packaged": "passed",
+        "clean_consumer": "not-run",
+        "device": "not-run"
+      },
+      "ort_version": "1.31.1",
+      "note": "packaged into the release APK (lib/x86_64); not run on an emulator",
+      "acceleration_claimed": false
+    },
+    "unsupported": {
+      "targets": "any target without a pinned artifact or native_bundle (windows, android_arm, macos_x64, ...)",
+      "behaviour": "build succeeds without code assets; OnnxRuntime.create* throws UnsupportedError",
+      "evidence": [
+        "docs/reviews/evidence/0.3.0-unsupported-target.log",
+        "docs/reviews/evidence/0.3.0-software.log"
+      ]
     }
   },
-  "generated_at": "2026-11-04T16:57:25.152796+00:00",
+  "generated_at": "2026-11-11T16:37:59.956471+00:00",
   "license": "MIT; ORT third-party notices are retained from the pinned upstream archive",
-  "source_fingerprint": "13f0f367d10efef7542001419427e8b01eb4df049607ed4fc25e3b95625b8aa0"
+  "source_fingerprint": "a6e5cd8fedd020ec686c063a7f35cc5cbeeb8cfecc1835a27ca5544d372987a8"
 }
