@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 (2026-11-12)
+
+- Dependency constraints are caret ranges instead of exact pins (`ffi`, `meta`, `path`, `crypto`, `hooks`, `code_assets`, `native_toolchain_c`), so consumers can take compatible updates. Verified with `crypto` 3.0.8, `code_assets` 2.2.0 and `native_toolchain_c` 0.19.6.
+- Bridge 0.3.1; native code, pinned ORT inputs and platform support are unchanged from 0.3.0.
+
 ## 0.3.0 (2026-11-12)
 
 - The build hook now bundles official ONNX Runtime CPU inputs for mobile targets: Android arm64-v8a and x86_64 from the Maven Central `onnxruntime-android` 1.31.1 AAR (runtime and bridge ELF files are checked for 16 KB pages), and iOS device and simulator (arm64, x64) from the official `onnxruntime-c` 1.30.0 CocoaPods archive, statically linked into the bridge. iOS requires iOS 15.1+.

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "package": "lib_onnx",
-  "package_version": "0.3.0",
+  "package_version": "0.3.1",
   "bridge_abi_version": 2,
   "ort_version": "1.31.1",
   "claimed_supported_targets": [
@@ -13,7 +13,7 @@
     "status": "passed",
     "evidence": [
       "docs/reviews/0.3.0-mobile-cpu.md",
-      "docs/reviews/evidence/0.3.0-software.log"
+      "docs/reviews/evidence/0.3.1-software.log"
     ]
   },
   "targets": {
@@ -36,7 +36,7 @@
       "binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "635556537c6cd90edbca5222ef53d903b315d46d24867aac840aad341d634579",
+          "sha256": "d9e2085266ecd2b2c98132361e1c64d9f68f9a6f3ca6adcf1b17238798ba000f",
           "role": "bridge",
           "checksum_status": "verified-local-file"
         },
@@ -49,15 +49,15 @@
       ],
       "evidence": [
         "docs/reviews/0.3.0-mobile-cpu.md",
-        "docs/reviews/evidence/0.3.0-software.log",
-        "docs/reviews/evidence/0.3.0-consumer.json",
-        "docs/reviews/evidence/0.3.0-consumer.log"
+        "docs/reviews/evidence/0.3.1-software.log",
+        "docs/reviews/evidence/0.3.1-consumer.json",
+        "docs/reviews/evidence/0.3.1-consumer.log"
       ],
-      "device_software_check": "passed: bridge 0.3.0 CPU MLP/Identity, JIT, CLI release and Flutter release consumer inference; GPU/ANE acceptance not-run",
+      "device_software_check": "passed: bridge 0.3.1 CPU MLP/Identity, JIT, CLI release and Flutter release consumer inference; GPU/ANE acceptance not-run",
       "signature_status": "ad-hoc signatures verified; Developer ID/notarization not-run",
-      "consumer_receipt": "docs/reviews/evidence/0.3.0-consumer.json",
+      "consumer_receipt": "docs/reviews/evidence/0.3.1-consumer.json",
       "model_evidence": [
-        "docs/reviews/evidence/0.3.0-software.log",
+        "docs/reviews/evidence/0.3.1-software.log",
         "docs/reviews/evidence/0.3.0-embeddinggemma2-macos.log"
       ],
       "accepted_execution_providers": [
@@ -67,7 +67,7 @@
       "consumer_binaries": [
         {
           "name": "liblib_onnx_bridge.dylib",
-          "sha256": "d710ece8b4ac4438f3575b3db09fc9f33d930504366ac5d641bbc7a338ce32bd"
+          "sha256": "d94d1a67212082d2392c1874f646620c2b7ffab11c55a1a829e79ede21445829"
         },
         {
           "name": "libonnxruntime.1.dylib",
@@ -103,7 +103,7 @@
       "binaries": [
         {
           "name": "lib_onnx_bridge.framework/lib_onnx_bridge",
-          "sha256": "5ab43e7ab97e2f4b9eac587f4f87c68beb7f9035486ae7d8517129a17d23c3d8",
+          "sha256": "12b3aa315b27c0efb3988c7f29bff65fa1152406238950ad6e0f0e1f595eeb01",
           "role": "bridge",
           "checksum_status": "verified-app-bundle-file"
         }
@@ -112,11 +112,11 @@
       "signature_status": "development signing verified (codesign --deep --strict); distribution signing not-run",
       "evidence": [
         "docs/reviews/0.3.0-mobile-cpu.md",
-        "docs/reviews/evidence/0.3.0-software.log",
-        "docs/reviews/evidence/0.3.0-consumer.json",
-        "docs/reviews/evidence/0.3.0-consumer.log",
+        "docs/reviews/evidence/0.3.1-software.log",
+        "docs/reviews/evidence/0.3.1-consumer.json",
+        "docs/reviews/evidence/0.3.1-consumer.log",
         "docs/reviews/evidence/0.3.0-ios-arm64.log",
-        "docs/reviews/evidence/0.3.0-ios-launch.json"
+        "docs/reviews/evidence/0.3.1-ios-launch.json"
       ]
     },
     "android_arm64": {
@@ -144,7 +144,7 @@
       "binaries": [
         {
           "name": "lib/arm64-v8a/liblib_onnx_bridge.so",
-          "sha256": "a7b4c6ba9db9f5b5fa07942b8b7efd901c7630951443c13894375a05ed953a23",
+          "sha256": "495be8b499d778e016d6ef22c37252d129b618c85d975df7f36e97a8fbceb6d7",
           "role": "bridge",
           "checksum_status": "verified-apk-entry"
         },
@@ -160,11 +160,11 @@
       "device_acceptance_scope": "CPU inference on Pixel Fold, Android 17, arm64-v8a; clean hosted-archive release consumer and path-consumer probe",
       "evidence": [
         "docs/reviews/0.3.0-mobile-cpu.md",
-        "docs/reviews/evidence/0.3.0-software.log",
-        "docs/reviews/evidence/0.3.0-consumer.json",
-        "docs/reviews/evidence/0.3.0-consumer.log",
+        "docs/reviews/evidence/0.3.1-software.log",
+        "docs/reviews/evidence/0.3.1-consumer.json",
+        "docs/reviews/evidence/0.3.1-consumer.log",
         "docs/reviews/evidence/0.3.0-android-arm64.log",
-        "docs/reviews/evidence/0.3.0-android-launch.json"
+        "docs/reviews/evidence/0.3.1-android-launch.json"
       ],
       "qnn": "not included in the official AAR; QNN/HTP still requires a verified native_bundle"
     },
@@ -223,11 +223,11 @@
       "behaviour": "build succeeds without code assets; OnnxRuntime.create* throws UnsupportedError",
       "evidence": [
         "docs/reviews/evidence/0.3.0-unsupported-target.log",
-        "docs/reviews/evidence/0.3.0-software.log"
+        "docs/reviews/evidence/0.3.1-software.log"
       ]
     }
   },
-  "generated_at": "2026-11-11T16:37:59.956471+00:00",
+  "generated_at": "2026-11-11T18:34:08.115921+00:00",
   "license": "MIT; ORT third-party notices are retained from the pinned upstream archive",
-  "source_fingerprint": "a6e5cd8fedd020ec686c063a7f35cc5cbeeb8cfecc1835a27ca5544d372987a8"
+  "source_fingerprint": "75fc8813a13ba0657ad1114035f1e86847995433de549e62814c407c53c2c104"
 }

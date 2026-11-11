@@ -1,0 +1,140 @@
+{
+  "status": "passed",
+  "workspace": "/var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-onj3ssdj",
+  "started_at": "2026-11-11T18:23:04.960086+00:00",
+  "source": "dart pub publish --to-archive (exact publish payload)",
+  "hardware_acceptance": "not-run",
+  "source_fingerprint": "75fc8813a13ba0657ad1114035f1e86847995433de549e62814c407c53c2c104",
+  "archive_sha256": "602f334b25eabe11f420327ea5183bf6b4957174ff90cd11ad83eda72d18bdb4",
+  "ort_cache_sha256": {
+    "onnxruntime-android-1.31.1.aar": "d4d50660300ed2c4f38ffdfd5ab5bfa3a22f995f282dda24f42ea3ea55467b49",
+    "onnxruntime-osx-arm64-1.31.1.tgz": "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f",
+    "pod-archive-onnxruntime-c-1.30.0.zip": "e6f1670c14406fd9f082bb400ab197a9b0a9646058ca6366e440642e2b54a2ea"
+  },
+  "resolved_package": "file:///var/folders/sc/__3sj3tx5h9d4wxx953s0fgh0000gn/T/lib-onnx-consumer-onj3ssdj/pub-cache/hosted/localhost%255857857/lib_onnx-0.3.1",
+  "dart_jit_log": "Running build hooks...clang: warning: overriding '-mmacos-version-min=12' option with '--target=arm64-apple-macos14.0' [-Woverriding-option]\n\n\nRunning build hooks...{\"status\":\"passed\",\"fixture\":\"identity_float32\",\"output\":[1.0,2.0,3.0,4.0],\"modelHash\":\"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515\",\"actualProviders\":[\"CPU\"],\"hardwareObserved\":false,\"bridge\":\"0.3.1\",\"ort\":\"1.31.1\",\"compiledProviders\":[\"CoreMLExecutionProvider\",\"WebGpuExecutionProvider\",\"CPUExecutionProvider\"],\"diagnostic\":\"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.085 ms, fallback: false)\",\"hardware_acceptance\":\"not-run\",\"qwen_acceptance\":\"not-run\"}\n",
+  "dart_release_log": "{\"status\":\"passed\",\"fixture\":\"identity_float32\",\"output\":[1.0,2.0,3.0,4.0],\"modelHash\":\"d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515\",\"actualProviders\":[\"CPU\"],\"hardwareObserved\":false,\"bridge\":\"0.3.1\",\"ort\":\"1.31.1\",\"compiledProviders\":[\"CoreMLExecutionProvider\",\"WebGpuExecutionProvider\",\"CPUExecutionProvider\"],\"diagnostic\":\"DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.071 ms, fallback: false)\",\"hardware_acceptance\":\"not-run\",\"qwen_acceptance\":\"not-run\"}\n",
+  "dart_release": "passed",
+  "bundled_libraries": [
+    {
+      "name": "liblib_onnx_bridge.dylib",
+      "sha256": "d94d1a67212082d2392c1874f646620c2b7ffab11c55a1a829e79ede21445829"
+    },
+    {
+      "name": "libonnxruntime.1.dylib",
+      "sha256": "ff2ef112c59c1e0bbcf00113b3fbfec4831337f007295ca140a65bde5cd210c2"
+    }
+  ],
+  "flutter_release": {
+    "status": "passed",
+    "fixture": "identity_float32",
+    "output": [
+      1.0,
+      2.0,
+      3.0,
+      4.0
+    ],
+    "modelHash": "d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515",
+    "actualProviders": [
+      "CPU"
+    ],
+    "hardwareObserved": false,
+    "bridge": "0.3.1",
+    "ort": "1.31.1",
+    "compiledProviders": [
+      "CoreMLExecutionProvider",
+      "WebGpuExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "diagnostic": "DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.087 ms, fallback: false)",
+    "hardware_acceptance": "not-run",
+    "qwen_acceptance": "not-run"
+  },
+  "android_release": {
+    "result": {
+      "status": "passed",
+      "fixture": "identity_float32",
+      "output": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "modelHash": "d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515",
+      "actualProviders": [
+        "CPU"
+      ],
+      "hardwareObserved": false,
+      "bridge": "0.3.1",
+      "ort": "1.31.1",
+      "compiledProviders": [
+        "NnapiExecutionProvider",
+        "WebGpuExecutionProvider",
+        "XnnpackExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "diagnostic": "DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.352 ms, fallback: false)",
+      "hardware_acceptance": "not-run",
+      "qwen_acceptance": "not-run"
+    },
+    "device": {
+      "ro.product.model": "Pixel Fold",
+      "ro.build.version.release": "17",
+      "ro.product.cpu.abi": "arm64-v8a"
+    },
+    "bundled_binaries": [
+      {
+        "name": "lib/arm64-v8a/liblib_onnx_bridge.so",
+        "sha256": "495be8b499d778e016d6ef22c37252d129b618c85d975df7f36e97a8fbceb6d7"
+      },
+      {
+        "name": "lib/arm64-v8a/libonnxruntime.so",
+        "sha256": "417140158bcf02eaf67fb2947cc973b2e15e6cb199b968c335ac18c8514ef84b"
+      }
+    ],
+    "apk_elf_16kb": "passed",
+    "apk_arm64_libraries": [
+      "lib/arm64-v8a/libapp.so",
+      "lib/arm64-v8a/libflutter.so",
+      "lib/arm64-v8a/liblib_onnx_bridge.so",
+      "lib/arm64-v8a/libonnxruntime.so"
+    ]
+  },
+  "ios_release": {
+    "result": {
+      "status": "passed",
+      "fixture": "identity_float32",
+      "output": [
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "modelHash": "d5ae9bdbcb472be787a1fb07a5f56450d1310e4c38804a6f21a7e708944e6515",
+      "actualProviders": [
+        "CPU"
+      ],
+      "hardwareObserved": false,
+      "bridge": "0.3.1",
+      "ort": "1.30.0",
+      "compiledProviders": [
+        "CoreMLExecutionProvider",
+        "XnnpackExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "diagnostic": "DiagnosticReport(task: 1, actual: [CPU], registered: [CPU], evidence: None (CPU), duration: 0.087 ms, fallback: false)",
+      "hardware_acceptance": "not-run",
+      "qwen_acceptance": "not-run"
+    },
+    "device": {
+      "devicectl": "GaoiPhone                           00008160-00022D0A3C100036 (UDID)              connected            iPhone 18 Pro (iPhone19,2)         physical"
+    },
+    "bundled_binaries": [
+      {
+        "name": "lib_onnx_bridge.framework/lib_onnx_bridge",
+        "sha256": "12b3aa315b27c0efb3988c7f29bff65fa1152406238950ad6e0f0e1f595eeb01"
+      }
+    ]
+  },
+  "completed_at": "2026-11-11T18:27:10.608858+00:00"
+}

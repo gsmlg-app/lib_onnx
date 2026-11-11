@@ -14,7 +14,7 @@ The native-assets route downloads and verifies the pinned archive (SHA-256) and 
 
 ```yaml
 dependencies:
-  lib_onnx: ^0.3.0
+  lib_onnx: ^0.3.1
 ```
 
 ```dart
